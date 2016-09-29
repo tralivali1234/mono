@@ -16,6 +16,8 @@ typedef enum {
 	MONO_TRACE_SECURITY		= (1<<6),
 	MONO_TRACE_THREADPOOL		= (1<<7),
 	MONO_TRACE_IO_THREADPOOL	= (1<<8),
+	MONO_TRACE_IO_LAYER		= (1<<9),
+	MONO_TRACE_W32HANDLE	= (1<<10),
 	MONO_TRACE_ALL			= MONO_TRACE_ASSEMBLY |
 					  MONO_TRACE_TYPE |
 					  MONO_TRACE_DLLIMPORT |
@@ -24,17 +26,22 @@ typedef enum {
 					  MONO_TRACE_AOT |
 					  MONO_TRACE_SECURITY |
 					  MONO_TRACE_THREADPOOL |
-					  MONO_TRACE_IO_THREADPOOL
+					  MONO_TRACE_IO_THREADPOOL |
+					  MONO_TRACE_IO_LAYER |
+					  MONO_TRACE_W32HANDLE
 } MonoTraceMask;
+
+extern GLogLevelFlags mono_internal_current_level;
+extern MonoTraceMask mono_internal_current_mask;
+
+void 
+mono_trace_init (void);
 
 void 
 mono_trace_cleanup (void);
 
 void 
-mono_trace (GLogLevelFlags level, MonoTraceMask mask, const char *format, ...);
-
-void 
-mono_tracev (GLogLevelFlags level, MonoTraceMask mask, const char *format, va_list args);
+mono_tracev_inner (GLogLevelFlags level, MonoTraceMask mask, const char *format, va_list args);
 
 void 
 mono_trace_set_level (GLogLevelFlags level);
@@ -50,6 +57,33 @@ mono_trace_pop (void);
 
 gboolean
 mono_trace_is_traced (GLogLevelFlags level, MonoTraceMask mask);
+
+G_GNUC_UNUSED static void
+mono_tracev (GLogLevelFlags level, MonoTraceMask mask, const char *format, va_list args)
+{
+	if(G_UNLIKELY (level <= mono_internal_current_level && mask & mono_internal_current_mask))
+		mono_tracev_inner (level, mask, format, args);
+}
+
+/**
+ * mono_trace:
+ *
+ *	@level: Verbose level of the specified message
+ *	@mask: Type of the specified message
+ *
+ * Traces a new message, depending on the current logging level
+ * and trace mask.
+ */
+G_GNUC_UNUSED static void
+mono_trace (GLogLevelFlags level, MonoTraceMask mask, const char *format, ...) 
+{
+	if(G_UNLIKELY (level <= mono_internal_current_level && mask & mono_internal_current_mask)) {
+		va_list args;
+		va_start (args, format);
+		mono_tracev_inner (level, mask, format, args);
+		va_end (args);
+	}
+}
 
 #ifdef G_HAVE_ISO_VARARGS
 #define mono_trace_error(...)	mono_trace(G_LOG_LEVEL_ERROR, \
@@ -115,6 +149,44 @@ mono_trace_message(MonoTraceMask mask, const char *format, ...)
 
 #endif
 
+/* Internal logging API */
+typedef void (*MonoLoggerOpen) (const char *, void *);
+typedef void (*MonoLoggerWrite) (const char *, GLogLevelFlags, mono_bool, const char *);
+typedef void (*MonoLoggerClose) (void);
+
+typedef struct _MonoLogCallParm_ {
+	MonoLoggerOpen 	opener;		/* Routine to open logging */
+	MonoLoggerWrite	writer;		/* Routine to write log data */
+	MonoLoggerClose closer; 	/* Routine to close logging */
+	char		*dest;		/* Log destination */
+	void		*user_data;	/* User data from legacy handler */
+	mono_bool       header;		/* Whether we want pid/time/date in log message */
+} MonoLogCallParm;
+
+void mono_trace_set_log_handler_internal (MonoLogCallParm *callback, void *user_data);
+void mono_trace_set_logdest_string (const char *value);
+void mono_trace_set_logheader_string (const char *value);
+
+void mono_log_open_syslog (const char *, void *);
+void mono_log_write_syslog (const char *, GLogLevelFlags, mono_bool, const char *);
+void mono_log_close_syslog (void);
+
+void mono_log_open_logfile (const char *, void *);
+void mono_log_write_logfile (const char *, GLogLevelFlags, mono_bool, const char *);
+void mono_log_close_logfile (void);
+
+#if PLATFORM_ANDROID
+void mono_log_open_logcat (const char *path, void *userData);
+void mono_log_write_logcat (const char *log_domain, GLogLevelFlags level, mono_bool hdr, const char *message);
+void mono_log_close_logcat (void);
+#endif
+
+#if defined(HOST_IOS)
+void mono_log_open_asl (const char *path, void *userData);
+void mono_log_write_asl (const char *log_domain, GLogLevelFlags level, mono_bool hdr, const char *message);
+void mono_log_close_asl (void);
+
+#endif
 
 G_END_DECLS
 

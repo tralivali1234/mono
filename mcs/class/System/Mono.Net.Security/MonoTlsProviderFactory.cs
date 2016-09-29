@@ -50,7 +50,7 @@ namespace Mono.Net.Security
 	 * Keep in sync with Mono.Security/Mono.Security.Interface/MonoTlsProvider.cs.
 	 *
 	 */
-	static class MonoTlsProviderFactory
+	static partial class MonoTlsProviderFactory
 	{
 		#region Internal API
 
@@ -64,93 +64,88 @@ namespace Mono.Net.Security
 
 		internal static IMonoTlsProvider GetProviderInternal ()
 		{
+			#if SECURITY_DEP
 			lock (locker) {
-				if (currentProvider != null)
-					return currentProvider;
-
-				try {
-					defaultProvider = CreateDefaultProvider ();
-				} catch (Exception ex) {
-					throw new NotSupportedException ("TLS Support not available.", ex);
-				}
-
-				if (defaultProvider == null)
-					throw new NotSupportedException ("TLS Support not available.");
-
-				currentProvider = defaultProvider;
-				return currentProvider;
-			}
-		}
-
-		internal static IMonoTlsProvider GetDefaultProviderInternal ()
-		{
-			lock (locker) {
-				if (defaultProvider != null)
-					return defaultProvider;
-
-				try {
-					defaultProvider = CreateDefaultProvider ();
-				} catch (Exception ex) {
-					throw new NotSupportedException ("TLS Support not available.", ex);
-				}
-
-				if (defaultProvider == null)
-					throw new NotSupportedException ("TLS Support not available.");
-
+				InitializeInternal ();
 				return defaultProvider;
 			}
+			#else
+			throw new NotSupportedException ("TLS Support not available.");
+			#endif
 		}
 
-		static IMonoTlsProvider CreateDefaultProvider ()
-		{
 #if SECURITY_DEP
-#if MONO_FEATURE_NEW_SYSTEM_SOURCE
-			/*
-			 * This is a hack, which is used in the Mono.Security.Providers.NewSystemSource
-			 * assembly, which will provide a "fake" System.dll.  Use the public Mono.Security
-			 * API to get the "real" System.dll's provider via reflection, then wrap it with
-			 * the "fake" version's perceived view.
-			 *
-			 * NewSystemSource needs to compile MonoTlsProviderFactory.cs, IMonoTlsProvider.cs,
-			 * MonoTlsProviderWrapper.cs and CallbackHelpers.cs from this directory and only these.
-			 */
-			var userProvider = MSI.MonoTlsProviderFactory.GetProvider ();
-			return new Private.MonoTlsProviderWrapper (userProvider);
-#else
-			return CreateDefaultProviderImpl ();
-#endif
-#else
-			return null;
-#endif
+		internal static void InitializeInternal ()
+		{
+			lock (locker) {
+				if (initialized)
+					return;
+
+				MSI.MonoTlsProvider provider;
+				try {
+					provider = CreateDefaultProviderImpl ();
+				} catch (Exception ex) {
+					throw new NotSupportedException ("TLS Support not available.", ex);
+				}
+
+				if (provider == null)
+					throw new NotSupportedException ("TLS Support not available.");
+
+				defaultProvider = new Private.MonoTlsProviderWrapper (provider);
+				initialized = true;
+			}
 		}
+
+		internal static void InitializeInternal (string provider) 
+		{
+			lock (locker) {
+				if (initialized)
+					throw new NotSupportedException ("TLS Subsystem already initialized.");
+
+				var msiProvider = LookupProvider (provider, true);
+				defaultProvider = new Private.MonoTlsProviderWrapper (msiProvider);
+				initialized = true;
+			}
+		}
+#endif
 
 		static object locker = new object ();
+		static bool initialized;
 		static IMonoTlsProvider defaultProvider;
-		static IMonoTlsProvider currentProvider;
 
 		#endregion
 
-#if SECURITY_DEP && !MONO_FEATURE_NEW_SYSTEM_SOURCE
+#if SECURITY_DEP
 
-#if !MOBILE
 		static Dictionary<string,string> providerRegistration;
 
-		internal static void RegisterProvider (string name, string type)
+		static Type LookupProviderType (string name, bool throwOnError)
 		{
 			lock (locker) {
 				InitializeProviderRegistration ();
-				providerRegistration.Add (name, type);
+				string typeName;
+				if (!providerRegistration.TryGetValue (name, out typeName)) {
+					if (throwOnError)
+						throw new NotSupportedException (string.Format ("No such TLS Provider: `{0}'.", name));
+					return null;
+				}
+				var type = Type.GetType (typeName, false);
+				if (type == null && throwOnError)
+					throw new NotSupportedException (string.Format ("Could not find TLS Provider: `{0}'.", typeName));
+				return type;
 			}
 		}
 
-		static string LookupProvider (string name)
+		static MSI.MonoTlsProvider LookupProvider (string name, bool throwOnError)
 		{
-			lock (locker) {
-				InitializeProviderRegistration ();
-				string type;
-				if (!providerRegistration.TryGetValue (name, out type))
-					type = null;
-				return type;
+			var type = LookupProviderType (name, throwOnError);
+			if (type == null)
+				return null;
+
+			try {
+				return (MSI.MonoTlsProvider)Activator.CreateInstance (type, true);
+			} catch (Exception ex) {
+				throw new NotSupportedException (string.Format ("Unable to instantiate TLS Provider `{0}'.", type), ex);
 			}
 		}
 
@@ -160,12 +155,17 @@ namespace Mono.Net.Security
 				if (providerRegistration != null)
 					return;
 				providerRegistration = new Dictionary<string,string> ();
-				providerRegistration.Add ("newtls", "Mono.Security.Providers.NewTls.NewTlsProvider, Mono.Security.Providers.NewTls, Version=4.0.0.0, Culture=neutral, PublicKeyToken=84e3aee7225169c2");
-				providerRegistration.Add ("oldtls", "Mono.Security.Providers.OldTls.OldTlsProvider, Mono.Security.Providers.OldTls, Version=4.0.0.0, Culture=neutral, PublicKeyToken=84e3aee7225169c2");
+				providerRegistration.Add ("legacy", "Mono.Net.Security.LegacyTlsProvider");
+#if HAVE_BTLS
+				if (Mono.Btls.MonoBtlsProvider.IsSupported ())
+					providerRegistration.Add ("btls", "Mono.Btls.MonoBtlsProvider");
+#endif
+				X509Helper2.Initialize ();
 			}
 		}
 
-		static IMonoTlsProvider TryDynamicLoad ()
+#if MOBILE_STATIC || !MOBILE
+		static MSI.MonoTlsProvider TryDynamicLoad ()
 		{
 			var variable = Environment.GetEnvironmentVariable ("MONO_TLS_PROVIDER");
 			if (variable == null)
@@ -174,40 +174,18 @@ namespace Mono.Net.Security
 			if (string.Equals (variable, "default", StringComparison.OrdinalIgnoreCase))
 				return null;
 
-			string typeName;
-			if (variable.IndexOfAny (new char[] { ',', '.', '=' }) > 0) {
-				typeName = variable;
-			} else {
-				typeName = LookupProvider (variable);
-				if (typeName == null)
-					throw new NotSupportedException (string.Format ("No such TLS Provider: `{0}'.", typeName));
-			}
-
-			var type = Type.GetType (typeName, false);
-			if (type == null)
-				throw new NotSupportedException (string.Format ("Could not find TLS Provider: `{0}'.", typeName));
-
-			MSI.MonoTlsProvider provider;
-			try {
-				provider = (MSI.MonoTlsProvider)Activator.CreateInstance (type);
-			} catch (Exception ex) {
-				throw new NotSupportedException (string.Format ("Unable to instantiate TLS Provider `{0}'.", typeName), ex);
-			}
-
-			return new Private.MonoTlsProviderWrapper (provider);
+			return LookupProvider (variable, true);
 		}
-#endif
 
-		static IMonoTlsProvider CreateDefaultProviderImpl ()
+		static MSI.MonoTlsProvider CreateDefaultProviderImpl ()
 		{
-#if !MOBILE
 			var provider = TryDynamicLoad ();
 			if (provider != null)
 				return provider;
-#endif
 
-			return new Private.MonoDefaultTlsProvider ();
+			return new LegacyTlsProvider ();
 		}
+#endif
 
 		#region Mono.Security visible API
 
@@ -226,28 +204,40 @@ namespace Mono.Net.Security
 			return provider.Provider;
 		}
 
-		internal static MSI.MonoTlsProvider GetDefaultProvider ()
+		internal static bool IsProviderSupported (string name)
 		{
-			var provider = GetDefaultProviderInternal ();
-			if (provider == null)
-				throw new NotSupportedException ("No TLS Provider available.");
-
-			return provider.Provider;
+			return LookupProvider (name, false) != null;
 		}
 
-		internal static bool HasProvider {
+		internal static MSI.MonoTlsProvider GetProvider (string name)
+		{
+			return LookupProvider (name, false);
+		}
+
+		internal static bool IsInitialized {
 			get {
 				lock (locker) {
-					return currentProvider != null;
+					return initialized;
 				}
 			}
 		}
 
-		internal static void InstallProvider (MSI.MonoTlsProvider provider)
+		internal static void Initialize ()
 		{
-			lock (locker) {
-				currentProvider = new Private.MonoTlsProviderWrapper (provider);
-			}
+			#if SECURITY_DEP
+			InitializeInternal ();
+			#else
+			throw new NotSupportedException ("TLS Support not available.");
+			#endif
+		}
+
+		internal static void Initialize (string provider)
+		{
+			#if SECURITY_DEP
+			InitializeInternal (provider);
+			#else
+			throw new NotSupportedException ("TLS Support not available.");
+			#endif
 		}
 
 		internal static HttpWebRequest CreateHttpsRequest (Uri requestUri, MSI.MonoTlsProvider provider, MSI.MonoTlsSettings settings)

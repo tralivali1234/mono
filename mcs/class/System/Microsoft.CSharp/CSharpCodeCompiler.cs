@@ -48,54 +48,9 @@ namespace Mono.CSharp
 	
 	internal class CSharpCodeCompiler : CSharpCodeGenerator, ICodeCompiler
 	{
-		static string windowsMcsPath;
-		static string windowsMonoPath;
-		static string unixMcsCommand;
-
 		Mutex mcsOutMutex;
 		StringCollection mcsOutput;
 		
-		static CSharpCodeCompiler ()
-		{
-			if (Path.DirectorySeparatorChar == '\\') {
-				PropertyInfo gac = typeof (Environment).GetProperty ("GacPath", BindingFlags.Static|BindingFlags.NonPublic);
-				MethodInfo get_gac = gac.GetGetMethod (true);
-				string p = Path.GetDirectoryName (
-					(string) get_gac.Invoke (null, null));
-				windowsMonoPath = Path.Combine (
-					Path.GetDirectoryName (
-						Path.GetDirectoryName (p)),
-					"bin\\mono.bat");
-				if (!File.Exists (windowsMonoPath))
-					windowsMonoPath = Path.Combine (
-						Path.GetDirectoryName (
-							Path.GetDirectoryName (p)),
-						"bin\\mono.exe");
-				if (!File.Exists (windowsMonoPath))
-					windowsMonoPath = Path.Combine (
-						Path.GetDirectoryName (
-							Path.GetDirectoryName (
-								Path.GetDirectoryName (p))),
-						"mono\\mono\\mini\\mono.exe");
-				if (!File.Exists (windowsMonoPath))
-					throw new FileNotFoundException ("Windows mono path not found: " + windowsMonoPath);
-
-				windowsMcsPath = Path.Combine (p, "4.5\\mcs.exe");
-				if (!File.Exists (windowsMcsPath))
-					windowsMcsPath = Path.Combine(Path.GetDirectoryName (p), "lib\\build\\mcs.exe");
-				
-				if (!File.Exists (windowsMcsPath))
-					throw new FileNotFoundException ("Windows mcs path not found: " + windowsMcsPath);
-			} else {
-				var mscorlibPath = new Uri (typeof (object).Assembly.CodeBase).LocalPath;
-				var unixMcsPath = Path.GetFullPath (Path.Combine (mscorlibPath, "..", "..", "..", "..", "bin", "mcs"));
-				if (File.Exists (unixMcsPath))
-					unixMcsCommand = unixMcsPath;
-				else
-					unixMcsCommand = "mcs";
-			}
-		}
-
 		//
 		// Constructors
 		//
@@ -177,13 +132,13 @@ namespace Mono.CSharp
 
 			// FIXME: these lines had better be platform independent.
 			if (Path.DirectorySeparatorChar == '\\') {
-				mcs.StartInfo.FileName = windowsMonoPath;
-				mcs.StartInfo.Arguments = "\"" + windowsMcsPath + "\" " +
-					BuildArgs (options, fileNames, ProviderOptions);
+				mcs.StartInfo.FileName = MonoToolsLocator.Mono;
+				mcs.StartInfo.Arguments = "\"" + MonoToolsLocator.CSharpCompiler + "\" ";
 			} else {
-				mcs.StartInfo.FileName=unixMcsCommand;
-				mcs.StartInfo.Arguments=BuildArgs(options, fileNames, ProviderOptions);
+				mcs.StartInfo.FileName = MonoToolsLocator.CSharpCompiler;
 			}
+
+			mcs.StartInfo.Arguments += BuildArgs (options, fileNames, ProviderOptions);
 
 			mcsOutput = new StringCollection ();
 			mcsOutMutex = new Mutex ();
@@ -215,6 +170,10 @@ namespace Mono.CSharp
 			mcs.StartInfo.RedirectStandardOutput=true;
 			mcs.StartInfo.RedirectStandardError=true;
 			mcs.ErrorDataReceived += new DataReceivedEventHandler (McsStderrDataReceived);
+
+			// Use same text decoder as mcs and not user set values in Console
+			mcs.StartInfo.StandardOutputEncoding =
+			mcs.StartInfo.StandardErrorEncoding = Encoding.UTF8;
 			
 			try {
 				mcs.Start();
@@ -366,7 +325,7 @@ namespace Mono.CSharp
 				}
 			}
 
-			args.Append("/sdk:4.5");
+			args.Append ("/noconfig ");
 
 			args.Append (" -- ");
 			foreach (string source in fileNames)

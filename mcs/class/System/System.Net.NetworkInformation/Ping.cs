@@ -159,7 +159,11 @@ namespace System.Net.NetworkInformation {
 		{
 			user_async_state = null;
 			worker = null;
-			cts = null;
+
+			if (cts != null) {
+				cts.Dispose();
+				cts = null;
+			}
 
 			if (PingCompleted != null)
 				PingCompleted (this, e);
@@ -258,12 +262,12 @@ namespace System.Net.NetworkInformation {
 				bytes = new byte [100];
 				do {
 					EndPoint endpoint = client;
-					int error = 0;
-					int rc = s.ReceiveFrom_nochecks_exc (bytes, 0, 100, SocketFlags.None,
-							ref endpoint, false, out error);
+					SocketError error = 0;
+					int rc = s.ReceiveFrom (bytes, 0, 100, SocketFlags.None,
+							ref endpoint, out error);
 
-					if (error != 0) {
-						if (error == (int) SocketError.TimedOut) {
+					if (error != SocketError.Success) {
+						if (error == SocketError.TimedOut) {
 							return new PingReply (null, new byte [0], options, 0, IPStatus.TimedOut);
 						}
 						throw new NotSupportedException (String.Format ("Unexpected socket error during ping request: {0}", error));
@@ -595,6 +599,8 @@ namespace System.Net.NetworkInformation {
 		{
 			if ((worker != null) || (cts != null))
 				throw new InvalidOperationException ("Another SendAsync operation is in progress");
+
+			cts = new CancellationTokenSource();
 
 			var task = Task<PingReply>.Factory.StartNew (
 				() => Send (address, timeout, buffer, options), cts.Token);

@@ -284,7 +284,9 @@ namespace MonoTests.System.Diagnostics
 				Assert.AreEqual (-2147467259, ex.ErrorCode, "#3");
 				Assert.IsNull (ex.InnerException, "#4");
 				Assert.IsNotNull (ex.Message, "#5");
-				Assert.AreEqual (2, ex.NativeErrorCode, "#6");
+				// TODO: On windows we get ACCESS_DENIED (5) instead of FILE_NOT_FOUND (2) and .NET
+				// gives ERROR_INVALID_PARAMETER (87). See https://bugzilla.xamarin.com/show_bug.cgi?id=44514
+				Assert.IsTrue (ex.NativeErrorCode == 2 || ex.NativeErrorCode == 5 || ex.NativeErrorCode == 87, "#6");
 			}
 		}
 
@@ -440,7 +442,9 @@ namespace MonoTests.System.Diagnostics
 				Assert.AreEqual (-2147467259, ex.ErrorCode, "#3");
 				Assert.IsNull (ex.InnerException, "#4");
 				Assert.IsNotNull (ex.Message, "#5");
-				Assert.AreEqual (2, ex.NativeErrorCode, "#6");
+				// TODO: On windows we get ACCESS_DENIED (5) instead of FILE_NOT_FOUND (2) and .NET
+				// gives ERROR_INVALID_PARAMETER (87). See https://bugzilla.xamarin.com/show_bug.cgi?id=44514
+				Assert.IsTrue (ex.NativeErrorCode == 2 || ex.NativeErrorCode == 5 || ex.NativeErrorCode == 87, "#6");
 			}
 		}
 
@@ -836,10 +840,36 @@ namespace MonoTests.System.Diagnostics
 			p.BeginOutputReadLine ();
 			p.WaitForExit ();
 
-			exited.Wait (10000);
+			Assert.IsTrue (exited.Wait (10000));
 			Assert.AreEqual (1, exitedCalledCounter);
 			Thread.Sleep (50);
 			Assert.AreEqual (1, exitedCalledCounter);
+		}
+
+		[Test]
+		[NUnit.Framework.Category ("MobileNotWorking")]
+		public void TestDisableEventsBeforeExitedEvent ()
+		{
+			Process p = new Process ();
+			
+			p.StartInfo = GetCrossPlatformStartInfo ();
+			p.StartInfo.UseShellExecute = false;
+			p.StartInfo.RedirectStandardOutput = true;
+			p.StartInfo.RedirectStandardError = true;
+
+			p.EnableRaisingEvents = false;
+
+			ManualResetEvent mre = new ManualResetEvent (false);
+			p.Exited += (object sender, EventArgs e) => {
+				mre.Set ();
+			};
+
+			p.Start ();
+			p.BeginErrorReadLine ();
+			p.BeginOutputReadLine ();
+			p.WaitForExit ();
+
+			Assert.IsFalse (mre.WaitOne (1000));
 		}
 
 		ProcessStartInfo GetCrossPlatformStartInfo ()
@@ -854,6 +884,23 @@ namespace MonoTests.System.Diagnostics
 				return new ProcessStartInfo (path, "/");
 			} else
 				return new ProcessStartInfo ("help", "");
+		}
+
+		ProcessStartInfo GetEchoCrossPlatformStartInfo ()
+		{
+			if (RunningOnUnix) {
+				string path;
+#if MONODROID
+				path = "/system/bin/cat";
+#else
+				path = "/bin/cat";
+#endif
+				return new ProcessStartInfo (path);
+			} else {
+				var psi = new ProcessStartInfo ("findstr");
+				psi.Arguments = "\"^\"";
+				return psi;
+			}
 		}
 #endif // MONO_FEATURE_PROCESS_START
 
@@ -946,14 +993,25 @@ namespace MonoTests.System.Diagnostics
 		[NUnit.Framework.Category ("MobileNotWorking")]
 		public void StandardInputWrite ()
 		{
-			var psi = GetCrossPlatformStartInfo ();
+			var psi = GetEchoCrossPlatformStartInfo ();
 			psi.RedirectStandardInput = true;
 			psi.RedirectStandardOutput = true;
 			psi.UseShellExecute = false;
 
 			using (var p = Process.Start (psi)) {
-				for (int i = 0; i < 1024 * 9; ++i)
+				// drain stdout
+				p.OutputDataReceived += (s, e) => {};
+				p.BeginOutputReadLine ();
+
+				for (int i = 0; i < 1024 * 9; ++i) {
 					p.StandardInput.Write ('x');
+					if (i > 0 && i % 128 == 0)
+						p.StandardInput.WriteLine ();
+				}
+
+				p.StandardInput.Close ();
+
+				p.WaitForExit ();
 			}
 		}
 #endif // MONO_FEATURE_PROCESS_START
@@ -967,7 +1025,7 @@ namespace MonoTests.System.Diagnostics
 
 				StringBuilder sb = new StringBuilder ();
 				sb.AppendFormat ("Could not found: {0} {1}\n", name.Name, name.Version);
-				sb.AppendLine ("Looked in assemblies:");
+				sb.AppendLine ("Looked in modules:");
 
 				foreach (var o in modules) {
 					var m = (ProcessModule) o;
@@ -992,5 +1050,68 @@ namespace MonoTests.System.Diagnostics
 				Assert.IsTrue (found, sb.ToString ());
 			}
 		}
+
+#if MONO_FEATURE_PROCESS_START
+		[Test]
+		[NUnit.Framework.Category ("MobileNotWorking")]
+		[ExpectedException (typeof (InvalidOperationException))]
+		public void TestDoubleBeginOutputReadLine ()
+		{
+			using (Process p = new Process ()) {
+				p.StartInfo = GetCrossPlatformStartInfo ();
+				p.StartInfo.UseShellExecute = false;
+				p.StartInfo.RedirectStandardOutput = true;
+				p.StartInfo.RedirectStandardError = true;
+
+				p.Start ();
+
+				p.BeginOutputReadLine ();
+				p.BeginOutputReadLine ();
+
+				Assert.Fail ();
+			}
+		}
+
+		[Test]
+		[NUnit.Framework.Category ("MobileNotWorking")]
+		[ExpectedException (typeof (InvalidOperationException))]
+		public void TestDoubleBeginErrorReadLine ()
+		{
+			using (Process p = new Process ()) {
+				p.StartInfo = GetCrossPlatformStartInfo ();
+				p.StartInfo.UseShellExecute = false;
+				p.StartInfo.RedirectStandardOutput = true;
+				p.StartInfo.RedirectStandardError = true;
+
+				p.Start ();
+
+				p.BeginErrorReadLine ();
+				p.BeginErrorReadLine ();
+
+				Assert.Fail ();
+			}
+		}
+
+		[Test]
+		[NUnit.Framework.Category ("MobileNotWorking")]
+		public void TestExitedRaisedTooSoon ()
+		{
+			if (!RunningOnUnix)
+				Assert.Ignore ("using sleep command, only available on unix");
+
+			int sleeptime = 5;
+
+			using (Process p = Process.Start("sleep", sleeptime.ToString ())) {
+				ManualResetEvent mre = new ManualResetEvent (false);
+
+				p.EnableRaisingEvents = true;
+				p.Exited += (sender, e) => {
+					mre.Set ();
+				};
+
+				Assert.IsFalse (mre.WaitOne ((sleeptime - 2) * 1000), "Exited triggered before the process returned");
+			}
+		}
+#endif // MONO_FEATURE_PROCESS_START
 	}
 }

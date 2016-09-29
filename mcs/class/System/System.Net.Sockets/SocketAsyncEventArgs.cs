@@ -101,7 +101,6 @@ namespace System.Net.Sockets
 			set { remote_ep = value; }
 		}
 
-#if !NET_2_1
 		public IPPacketInformation ReceiveMessageFromPacketInfo {
 			get;
 			private set;
@@ -116,7 +115,6 @@ namespace System.Net.Sockets
 			get;
 			set;
 		}
-#endif
 
 		[MonoTODO ("unused property")]
 		public int SendPacketsSendSize {
@@ -185,9 +183,7 @@ namespace System.Net.Sockets
 			BufferList = null;
 			RemoteEndPoint = null;
 			UserToken = null;
-#if !NET_2_1
 			SendPacketsElements = null;
-#endif
 		}
 
 		public void Dispose ()

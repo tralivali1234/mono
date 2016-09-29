@@ -140,6 +140,7 @@ namespace System.IO {
 		{
 			int l = s.Length;
 			int sub = 0;
+			int alt = 0;
 			int start = 0;
 
 			// Host prefix?
@@ -158,6 +159,8 @@ namespace System.IO {
 				
 				if (c != DirectorySeparatorChar && c != AltDirectorySeparatorChar)
 					continue;
+				if (DirectorySeparatorChar != AltDirectorySeparatorChar && c == AltDirectorySeparatorChar)
+					alt++;
 				if (i+1 == l)
 					sub++;
 				else {
@@ -167,7 +170,7 @@ namespace System.IO {
 				}
 			}
 
-			if (sub == 0)
+			if (sub == 0 && alt == 0)
 				return s;
 
 			char [] copy = new char [l-sub];
@@ -281,12 +284,17 @@ namespace System.IO {
 
 			SecurityManager.EnsureElevatedPermissions (); // this is a no-op outside moonlight
 
-#if !NET_2_1
+#if !MOBILE
 			if (SecurityManager.SecurityEnabled) {
 				new FileIOPermission (FileIOPermissionAccess.PathDiscovery, fullpath).Demand ();
 			}
 #endif
 			return fullpath;
+		}
+
+		internal static String GetFullPathInternal(String path)
+		{
+			return InsecureGetFullPath (path);
 		}
 
 #if !MOBILE
@@ -315,9 +323,12 @@ namespace System.IO {
 
 		internal static string WindowsDriveAdjustment (string path)
 		{
-			// two special cases to consider when a drive is specified
-			if (path.Length < 2)
+			// three special cases to consider when a drive is specified
+			if (path.Length < 2) {
+				if (path.Length == 1 && (path[0] == '\\' || path[0] == '/'))
+					return Path.GetPathRoot(Directory.GetCurrentDirectory());
 				return path;
+			}
 			if ((path [1] != ':') || !Char.IsLetter (path [0]))
 				return path;
 
@@ -488,7 +499,7 @@ namespace System.IO {
 					f = new FileStream (path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read,
 							    8192, false, (FileOptions) 1);
 				} catch (IOException ex){
-					if (ex.hresult != MonoIO.FileAlreadyExistsHResult || count ++ > 65536)
+					if (ex._HResult != MonoIO.FileAlreadyExistsHResult || count ++ > 65536)
 						throw;
 				} catch (UnauthorizedAccessException ex) {
 					if (count ++ > 65536)
@@ -721,6 +732,7 @@ namespace System.IO {
 			else {
 				string ret = String.Join (DirectorySeparatorStr, dirs, 0, target);
 				if (Environment.IsRunningOnWindows) {
+#if !MOBILE					
 					// append leading '\' of the UNC path that was lost in STEP 3.
 					if (isUnc)
 						ret = Path.DirectorySeparatorStr + ret;
@@ -746,6 +758,7 @@ namespace System.IO {
 						else
 							return current + ret;
 					}
+#endif
 				} else {
 					if (root != "" && ret.Length > 0 && ret [0] != '/')
 						ret = root + ret;
@@ -865,11 +878,21 @@ namespace System.IO {
 				throw new ArgumentException (Locale.GetText ("Path is empty"));
 			if (path.IndexOfAny (Path.InvalidPathChars) != -1)
 				throw new ArgumentException (Locale.GetText ("Path contains invalid chars"));
+#if !MOBILE				
 			if (Environment.IsRunningOnWindows) {
 				int idx = path.IndexOf (':');
 				if (idx >= 0 && idx != 1)
 					throw new ArgumentException (parameterName);
 			}
+#endif
 		}
+
+		internal static string DirectorySeparatorCharAsString {
+			get {
+				return DirectorySeparatorStr;
+			}
+		}
+
+		internal const int MAX_PATH = 260;  // From WinDef.h
 	}
 }

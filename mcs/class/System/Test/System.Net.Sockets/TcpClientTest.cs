@@ -13,6 +13,8 @@ using System.Net;
 using System.Net.Sockets;
 using NUnit.Framework;
 
+using MonoTests.Helpers;
+
 namespace MonoTests.System.Net.Sockets
 {
 	/// <summary>
@@ -27,18 +29,22 @@ namespace MonoTests.System.Net.Sockets
 		/// (from System.Net.Sockets)
 		/// </summary>
 		[Test]
+#if FEATURE_NO_BSD_SOCKETS
+		[ExpectedException (typeof (PlatformNotSupportedException))]
+#endif
 		public void TcpClient()
 		{
 			// set up a listening Socket
 			Socket lSock = new Socket(AddressFamily.InterNetwork,
 				SocketType.Stream, ProtocolType.Tcp);
 			
-			lSock.Bind(new IPEndPoint(IPAddress.Any, 8765));
+			var port = NetworkHelpers.FindFreePort ();
+			lSock.Bind(new IPEndPoint(IPAddress.Any, port));
 			lSock.Listen(-1);
 
 
 			// connect to it with a TcpClient
-			TcpClient outClient = new TcpClient("localhost", 8765);
+			TcpClient outClient = new TcpClient("localhost", port);
 			Socket inSock = lSock.Accept();
 
 			
@@ -73,13 +79,15 @@ namespace MonoTests.System.Net.Sockets
 		}
 
 		[Test] // bug #81105
+#if FEATURE_NO_BSD_SOCKETS
+		[ExpectedException (typeof (PlatformNotSupportedException))]
+#endif
 		public void CloseTest ()
 		{
-			IPEndPoint localEP = new IPEndPoint (IPAddress.Loopback, 8765);
-			using (SocketResponder sr = new SocketResponder (localEP, new SocketRequestHandler (CloseRequestHandler))) {
-				sr.Start ();
-
-				TcpClient tcpClient = new TcpClient (IPAddress.Loopback.ToString (), 8765);
+			var port = NetworkHelpers.FindFreePort ();
+			IPEndPoint localEP = new IPEndPoint (IPAddress.Loopback, port);
+			using (SocketResponder sr = new SocketResponder (localEP, s => CloseRequestHandler (s))) {
+				TcpClient tcpClient = new TcpClient (IPAddress.Loopback.ToString (), port);
 				NetworkStream ns = tcpClient.GetStream ();
 				Assert.IsNotNull (ns, "#A1");
 				Assert.AreEqual (0, tcpClient.Available, "#A2");
@@ -103,10 +111,8 @@ namespace MonoTests.System.Net.Sockets
 				*/
 			}
 
-			using (SocketResponder sr = new SocketResponder (localEP, new SocketRequestHandler (CloseRequestHandler))) {
-				sr.Start ();
-
-				TcpClient tcpClient = new TcpClient (IPAddress.Loopback.ToString (), 8765);
+			using (SocketResponder sr = new SocketResponder (localEP, s => CloseRequestHandler (s))) {
+				TcpClient tcpClient = new TcpClient (IPAddress.Loopback.ToString (), port);
 				Assert.AreEqual (0, tcpClient.Available, "#B1");
 				Assert.IsTrue (tcpClient.Connected, "#B2");
 				// Assert.IsFalse (tcpClient.ExclusiveAddressUse, "#B3");
@@ -139,7 +145,11 @@ namespace MonoTests.System.Net.Sockets
 		}
 
 		[Test]
+#if FEATURE_NO_BSD_SOCKETS
+		[ExpectedException (typeof (PlatformNotSupportedException))]
+#else
 		[ExpectedException (typeof(ArgumentNullException))]
+#endif
 		public void ConnectMultiNull ()
 		{
 			TcpClient client = new TcpClient ();
@@ -149,6 +159,9 @@ namespace MonoTests.System.Net.Sockets
 		}
 		
 		[Test]
+#if FEATURE_NO_BSD_SOCKETS
+		[ExpectedException (typeof (PlatformNotSupportedException))]
+#endif
 		public void ConnectMultiAny ()
 		{
 			TcpClient client = new TcpClient ();
@@ -167,6 +180,9 @@ namespace MonoTests.System.Net.Sockets
 		}
 		
 		[Test]
+#if FEATURE_NO_BSD_SOCKETS
+		[ExpectedException (typeof (PlatformNotSupportedException))]
+#endif
 		public void ConnectMultiRefused ()
 		{
 			TcpClient client = new TcpClient ();

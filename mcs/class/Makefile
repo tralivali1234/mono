@@ -1,8 +1,8 @@
 thisdir = class
 
-# Note that Mono.Security and System.Security aren't listed.
-# We may have to add those if 'mcs' starts using them.
-basic_SUBDIRS := corlib System System.XML System Mono.Security System.Core 
+basic_SUBDIRS := corlib Mono.Security System System.XML System.Core
+
+pcl_facade_dirs := Facades
 
 # resgen is corlib specific so we need to wait until corlib is build
 # and build it just a step before first dll needs it
@@ -10,26 +10,30 @@ resgen_dir = ../tools/resgen
 
 build_SUBDIRS :=  \
 	corlib \
+	Mono.Security \
 	System \
 	System.XML \
-	System Mono.Security \
 	Mono.Posix \
-	System.Core
-
-pcl_facade_dirs := Facades
+	System.Core \
+	Mono.Cecil \
+	Mono.Cecil.Mdb \
+	System.ComponentModel.Composition.4.5 \
+	System.Numerics \
+	System.Xml.Linq \
+	$(pcl_facade_dirs)
 
 mobile_common_dirs := \
 	corlib	\
+	Mono.Security \
 	System	\
 	System.Core	\
+	System.Security	\
 	System.XML	\
-	Mono.Security	\
-	System	\
 	I18N		\
 	System.ServiceModel.Internals	\
-	SMDiagnostics	\
 	System.Runtime.Serialization	\
 	System.Xml.Linq	\
+	System.IdentityModel		\
 	System.ServiceModel	\
 	System.ServiceModel.Web	\
 	System.Json	\
@@ -37,8 +41,8 @@ mobile_common_dirs := \
 	Mono.Data.Tds	\
 	System.Transactions	\
 	System.Numerics	\
+	System.Numerics.Vectors		\
 	System.Data	\
-	Mono.Cairo	\
 	Mono.Data.Sqlite	\
 	System.Data.Services.Client \
 	System.IO.Compression \
@@ -47,18 +51,22 @@ mobile_common_dirs := \
 	System.ComponentModel.Composition.4.5 \
 	System.Net \
 	System.Net.Http	\
-	System.Net.Http.WebRequest	\
 	System.Windows \
 	System.Xml.Serialization \
 	Mono.CSharp	\
 	Microsoft.CSharp \
-	Mono.Security.Providers.DotNet	\
-	Mono.Security.Providers.OldTls \
-	Mono.Security.Providers.NewSystemSource
+	System.Runtime.InteropServices.RuntimeInformation	\
+	System.Reflection.DispatchProxy	\
+	System.Xml.XPath.XmlDocument \
+	System.Reflection.Context	\
+	System.Net.Http.WinHttpHandler
 
 mobile_static_dirs := \
 	$(mobile_common_dirs)	\
 	Mono.Dynamic.Interpreter	\
+	PEAPI	\
+	Mono.CompilerServices.SymbolWriter	\
+	Mono.Simd			\
 	$(pcl_facade_dirs)
 
 mobile_dynamic_dirs := \
@@ -80,6 +88,7 @@ monotouch_tv_dirs   := $(monotouch_dirs)
 
 monotouch_runtime_dirs := \
 	corlib \
+	Mono.Security \
 	System \
 	System.Core \
 	System.XML \
@@ -90,16 +99,17 @@ monotouch_tv_runtime_dirs := $(monotouch_runtime_dirs)
 
 xammac_4_5_dirs := \
 	corlib	\
+	Mono.Security \
 	System	\
 	Mono.Posix			\
 	System.Core	\
+	System.Security			\
 	System.XML	\
-	Mono.Security	\
-	System	\
 	I18N		\
 	System.ServiceModel.Internals	\
 	SMDiagnostics	\
 	System.Numerics	\
+	System.Numerics.Vectors		\
 	Mono.Data.Tds	\
 	System.Transactions	\
 	System.EnterpriseServices	\
@@ -130,19 +140,20 @@ xammac_4_5_dirs := \
 	Mono.CompilerServices.SymbolWriter	\
 	System.Data.Linq		\
 	System.Net.Http \
-	Mono.Security.Providers.DotNet \
-	Mono.Security.Providers.OldTls \
-	Mono.Security.Providers.NewSystemSource \
+	System.Net.Http.WebRequest \
+	System.Runtime.InteropServices.RuntimeInformation \
+	System.Reflection.Context	\
+	System.Net.Http.WinHttpHandler	\
 	$(pcl_facade_dirs)
 
 net_4_x_dirs := \
 	corlib				\
+	Mono.Security \
 	System				\
 	System.XML			\
 	Mono.CompilerServices.SymbolWriter \
 	Mono.Posix			\
 	System.Core			\
-	Mono.Security			\
 	System.Security			\
 	System.Configuration	\
 	$(resgen_dir)			\
@@ -217,7 +228,8 @@ net_4_x_dirs := \
 	System.Net.Http.Formatting \
 	System.Web.Http \
 	System.Web.Http.SelfHost \
-	System.Web.Http.WebHost
+	System.Web.Http.WebHost \
+	System.Runtime.InteropServices.RuntimeInformation
 
 # These are the subdirs which depends on libs in net_4_x_dirs
 # or have proper dependencies between each other
@@ -260,14 +272,19 @@ net_4_x_parallel_dirs := \
 	System.ComponentModel.Composition.4.5 \
 	System.Windows \
 	System.Xml.Serialization \
-	Mono.Security.Providers.DotNet \
-	Mono.Security.Providers.OldTls \
-	Mono.Security.Providers.NewSystemSource \
 	System.DirectoryServices.Protocols	\
 	RabbitMQ.Client			\
 	Microsoft.VisualC		\
 	WebMatrix.Data \
 	monodoc	\
+	System.Deployment \
+	System.Web.Mobile \
+	System.Web.RegularExpressions \
+	System.Workflow.Activities \
+	System.Workflow.ComponentModel \
+	System.Workflow.Runtime \
+	System.Reflection.Context \
+	legacy/Mono.Cecil \
 	$(pcl_facade_dirs)
 
 xbuild_2_0_dirs := \
@@ -296,13 +313,13 @@ binary_reference_assemblies_SUBDIRS := reference-assemblies
 net_4_x_SUBDIRS := $(net_4_x_dirs) $(xbuild_4_0_dirs)
 net_4_x_PARALLEL_SUBDIRS := $(net_4_x_parallel_dirs) aot-compiler
 xbuild_12_SUBDIRS := $(xbuild_4_0_dirs)
-xbuild_14_SUBDIRS := $(xbuild_4_0_dirs)
+xbuild_14_SUBDIRS := $(xbuild_4_0_dirs) Microsoft.NuGet.Build.Tasks
 
 include ../build/rules.make
 
 SUBDIRS = $(mobile_static_dirs) $(mobile_dynamic_dirs) $(monotouch_dirs) $(monodroid_dirs) $(xammac_dirs) $(net_4_x_dirs) $(net_4_x_parallel_dirs) $(xammac_net_4_5_SUBDIRS)
 
-DIST_ONLY_SUBDIRS = dlr aot-compiler reference-assemblies $(xbuild_4_0_dirs)
+DIST_ONLY_SUBDIRS = dlr aot-compiler reference-assemblies $(xbuild_4_0_dirs) Microsoft.NuGet.Build.Tasks
 
 # No new makefiles for: System.Messaging, System.Web.Mobile,
 # System.ServiceProcess
@@ -324,27 +341,47 @@ DISTFILES = \
 	notes/BitVecto32.txt	\
 	MicrosoftAjaxLibrary/License.htm	\
 	test-helpers/NetworkHelpers.cs	\
+	test-helpers/SocketResponder.cs	\
 	$(monolite_files)
 
 .PHONY: all-local $(STD_TARGETS:=-local)
 all-local $(STD_TARGETS:=-local):
 	@:
 
-# Files needed to bootstrap C# compiler
-basic_files = basic.exe mscorlib.dll System.dll System.Xml.dll Mono.Security.dll System.Core.dll System.Security.dll System.Configuration.dll
-monolite_files = $(basic_files:%=lib/monolite/%)
+all-local-aot:
 
-lib/monolite:
+monolite_dir := monolite
+
+# Files needed to bootstrap C# compiler
+build_files = mscorlib.dll System.dll System.Xml.dll Mono.Security.dll System.Core.dll System.Security.dll System.Configuration.dll \
+	System.Numerics.dll System.Xml.Linq.dll \
+	Facades/System.Collections.Concurrent.dll Facades/System.Linq.dll Facades/System.Runtime.dll Facades/System.Collections.dll	\
+	Facades/System.Reflection.Extensions.dll Facades/System.Text.Encoding.Extensions.dll Facades/System.Diagnostics.Debug.dll \
+	Facades/System.Reflection.Primitives.dll Facades/System.Text.Encoding.dll Facades/System.Diagnostics.Tools.dll Facades/System.Reflection.dll \
+	Facades/System.Threading.Tasks.Parallel.dll Facades/System.Dynamic.Runtime.dll Facades/System.Resources.ResourceManager.dll \
+	Facades/System.Threading.Tasks.dll Facades/System.Globalization.dll Facades/System.Runtime.Extensions.dll Facades/System.Threading.dll \
+	Facades/System.IO.dll Facades/System.Runtime.InteropServices.dll Facades/System.Xml.ReaderWriter.dll Facades/System.Linq.Expressions.dll \
+	Facades/System.Runtime.Numerics.dll Facades/System.Xml.XDocument.dll
+
+monolite_files = $(build_files:%=lib/$(monolite_dir)/%)
+
+lib/$(monolite_dir):
+lib/$(monolite_dir)/Facades:
 	$(MKINSTALLDIRS) $@
 
-$(monolite_files): | lib/monolite
-$(monolite_files): lib/monolite/%: lib/basic/%
+$(monolite_files): | lib/$(monolite_dir)
+$(monolite_files): | lib/$(monolite_dir)/Facades
+$(monolite_files): lib/$(monolite_dir)/%: lib/build/%
 	cp -p $< $@
 
-$(basic_files:%=lib/basic/%):
-	cd $(topdir) && $(MAKE) profile-do--basic--all NO_DIR_CHECK=1 SKIP_AOT=1
+$(build_files:%=lib/build/%):
+	cd $(topdir) && $(MAKE) profile-do--build--all NO_DIR_CHECK=1 SKIP_AOT=1
 
-dist-default: $(monolite_files)
+dist-monolite: $(monolite_files)
+	cp -p lib/basic/basic.exe lib/$(monolite_dir)
+
+dist-default: dist-monolite
+
 dist-local: dist-default
 
 csproj-local:

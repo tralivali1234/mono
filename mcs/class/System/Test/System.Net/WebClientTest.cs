@@ -1418,14 +1418,15 @@ namespace MonoTests.System.Net
 
 		[Test]
 		[Category ("AndroidNotWorking")] // Fails when ran as part of the entire BCL test suite. Works when only this fixture is ran
+#if FEATURE_NO_BSD_SOCKETS
+		[ExpectedException (typeof (PlatformNotSupportedException))]
+#endif
 		public void UploadValues1 ()
 		{
 			IPEndPoint ep = NetworkHelpers.LocalEphemeralEndPoint ();
 			string url = "http://" + ep.ToString () + "/test/";
 
-			using (SocketResponder responder = new SocketResponder (ep, new SocketRequestHandler (EchoRequestHandler))) {
-				responder.Start ();
-
+			using (SocketResponder responder = new SocketResponder (ep, s => EchoRequestHandler (s))) {
 				WebClient wc = new WebClient ();
 				wc.Encoding = Encoding.ASCII;
 
@@ -1670,6 +1671,10 @@ namespace MonoTests.System.Net
 		}
 
 		[Test]
+#if FEATURE_NO_BSD_SOCKETS
+		// We throw a PlatformNotSupportedException deeper, which is caught and re-thrown as WebException
+		[ExpectedException (typeof (WebException))]
+#endif
 		public void GetWebRequestOverriding ()
 		{
 			GetWebRequestOverridingTestClass testObject = new GetWebRequestOverridingTestClass ();
@@ -1782,9 +1787,11 @@ namespace MonoTests.System.Net
 			Assert.AreSame (wc.Proxy, WebRequest.DefaultWebProxy);
 		}
 		 
-#if NET_4_5
 		[Test]
 		[Category ("AndroidNotWorking")] // Fails when ran as part of the entire BCL test suite. Works when only this fixture is ran
+#if FEATURE_NO_BSD_SOCKETS
+		[ExpectedException (typeof (PlatformNotSupportedException))]
+#endif
 		public void UploadStringAsyncCancelEvent ()
 		{
 			UploadAsyncCancelEventTest (9301, (webClient, uri, cancelEvent) =>
@@ -1802,6 +1809,9 @@ namespace MonoTests.System.Net
 
 		[Test]
 		[Category ("AndroidNotWorking")] // Fails when ran as part of the entire BCL test suite. Works when only this fixture is ran
+#if FEATURE_NO_BSD_SOCKETS
+		[ExpectedException (typeof (PlatformNotSupportedException))]
+#endif
 		public void UploadDataAsyncCancelEvent ()
 		{
 			UploadAsyncCancelEventTest (9302, (webClient, uri, cancelEvent) =>
@@ -1818,6 +1828,9 @@ namespace MonoTests.System.Net
 		
 		[Test]
 		[Category ("AndroidNotWorking")] // Fails when ran as part of the entire BCL test suite. Works when only this fixture is ran
+#if FEATURE_NO_BSD_SOCKETS
+		[ExpectedException (typeof (PlatformNotSupportedException))]
+#endif
 		public void UploadValuesAsyncCancelEvent ()
 		{
 			UploadAsyncCancelEventTest (9303, (webClient, uri, cancelEvent) =>
@@ -1834,6 +1847,9 @@ namespace MonoTests.System.Net
 
 		[Test]
 		[Category ("AndroidNotWorking")] // Fails when ran as part of the entire BCL test suite. Works when only this fixture is ran
+#if FEATURE_NO_BSD_SOCKETS
+		[ExpectedException (typeof (PlatformNotSupportedException))]
+#endif
 		public void UploadFileAsyncCancelEvent ()
 		{
 			UploadAsyncCancelEventTest (9304,(webClient, uri, cancelEvent) =>
@@ -1853,9 +1869,13 @@ namespace MonoTests.System.Net
 
 		[Test]
 		[Category ("AndroidNotWorking")] // Test suite hangs if the tests runs as part of the entire BCL suite. Works when only this fixture is ran
+#if FEATURE_NO_BSD_SOCKETS
+		[ExpectedException (typeof (PlatformNotSupportedException))]
+#endif
 		public void UploadFileAsyncContentType ()
 		{
-			var serverUri = "http://localhost:13370/";
+			var port = NetworkHelpers.FindFreePort ();
+			var serverUri = "http://localhost:" + port + "/";
 			var filename = Path.GetTempFileName ();
 
 			HttpListener listener = new HttpListener ();
@@ -1873,17 +1893,14 @@ namespace MonoTests.System.Net
 			}
 			listener.Close ();
 		}
-#endif
 
 		public void UploadAsyncCancelEventTest (int port, Action<WebClient, Uri, EventWaitHandle> uploadAction)
 		{
 			var ep = NetworkHelpers.LocalEphemeralEndPoint ();
 			string url = "http://" + ep.ToString() + "/test/";
 
-			using (var responder = new SocketResponder (ep, EchoRequestHandler))
+			using (var responder = new SocketResponder (ep, s => EchoRequestHandler (s)))
 			{
-				responder.Start ();
-
 				var webClient = new WebClient ();
 
 				var cancellationTokenSource = new CancellationTokenSource ();
