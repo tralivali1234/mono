@@ -78,12 +78,13 @@ xammac_dirs := \
 	$(mobile_dynamic_dirs)
 
 monodroid_dirs := \
-	$(mobile_dynamic_dirs)
+	$(mobile_dynamic_dirs) \
+	Mono.Btls.Interface
 
 monotouch_dirs := \
 	$(mobile_static_dirs)
 
-monotouch_watch_dirs := $(monotouch_dirs)
+monotouch_watch_dirs := $(filter-out Mono.Security Mono.Data.Tds,$(monotouch_dirs))
 monotouch_tv_dirs   := $(monotouch_dirs)
 
 monotouch_runtime_dirs := \
@@ -94,7 +95,7 @@ monotouch_runtime_dirs := \
 	System.XML \
 	Mono.CSharp
 
-monotouch_watch_runtime_dirs := $(monotouch_runtime_dirs)
+monotouch_watch_runtime_dirs := $(filter-out Mono.Security Mono.Data.Tds,$(monotouch_runtime_dirs))
 monotouch_tv_runtime_dirs := $(monotouch_runtime_dirs)
 
 xammac_4_5_dirs := \
@@ -236,6 +237,7 @@ net_4_x_dirs := \
 net_4_x_parallel_dirs := \
 	PEAPI				\
 	I18N				\
+	Mono.Btls.Interface		\
 	Mono.Http			\
 	Mono.Cairo                      \
 	Mono.Cecil			\
@@ -342,6 +344,7 @@ DISTFILES = \
 	MicrosoftAjaxLibrary/License.htm	\
 	test-helpers/NetworkHelpers.cs	\
 	test-helpers/SocketResponder.cs	\
+	lib/$(monolite_dir)/basic.exe	\
 	$(monolite_files)
 
 .PHONY: all-local $(STD_TARGETS:=-local)
@@ -374,11 +377,13 @@ $(monolite_files): | lib/$(monolite_dir)/Facades
 $(monolite_files): lib/$(monolite_dir)/%: lib/build/%
 	cp -p $< $@
 
+lib/$(monolite_dir)/basic.exe:
+	cp -p lib/basic/basic.exe lib/$(monolite_dir)
+
 $(build_files:%=lib/build/%):
 	cd $(topdir) && $(MAKE) profile-do--build--all NO_DIR_CHECK=1 SKIP_AOT=1
 
-dist-monolite: $(monolite_files)
-	cp -p lib/basic/basic.exe lib/$(monolite_dir)
+dist-monolite: $(monolite_files) lib/$(monolite_dir)/basic.exe
 
 dist-default: dist-monolite
 

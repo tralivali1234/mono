@@ -111,16 +111,6 @@ mono_object_is_alive (MonoObject* o)
 	return TRUE;
 }
 
-void
-mono_gc_enable_events (void)
-{
-}
-
-void
-mono_gc_enable_alloc_events (void)
-{
-}
-
 int
 mono_gc_register_root (char *start, size_t size, void *descr, MonoGCRootSource source, const char *msg)
 {
@@ -454,11 +444,6 @@ mono_gc_get_nursery (int *shift_bits, size_t *size)
 	return NULL;
 }
 
-void
-mono_gc_set_current_thread_appdomain (MonoDomain *domain)
-{
-}
-
 gboolean
 mono_gc_precise_stack_mark_enabled (void)
 {
@@ -469,6 +454,16 @@ FILE *
 mono_gc_get_logfile (void)
 {
 	return NULL;
+}
+
+void
+mono_gc_params_set (const char* options)
+{
+}
+
+void
+mono_gc_debug_set (const char* options)
+{
 }
 
 void
@@ -556,8 +551,6 @@ mono_gc_is_null (void)
 	return TRUE;
 }
 #else
-	#ifdef _MSC_VER
-		// Quiet Visual Studio linker warning, LNK4221, in cases when this source file intentional ends up empty.
-		void __mono_win32_null_gc_quiet_lnk4221(void) {}
-	#endif
+
+MONO_EMPTY_SOURCE_FILE (null_gc);
 #endif /* HAVE_NULL_GC */

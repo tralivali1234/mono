@@ -68,7 +68,11 @@ AC_SUBST(libmono_cflags)
 AC_SUBST(libmono_ldflags)
 
 # Variable to have relocatable .pc files (lib, or lib64)
-reloc_libdir=`basename ${libdir}`
+# realpath isn't always available, and requires that all but the tip of the provided
+# path exists. Fall back to the old behaviour, but realpath allows depth >1
+# e.g. Debian puts Mono in /usr/bin and libs in /usr/lib/x86_64-linux-gnu/ which is
+# too deep for the old method to work
+reloc_libdir=`realpath --relative-to=${prefix} ${libdir} 2> /dev/null || basename ${libdir}`
 AC_SUBST(reloc_libdir)
 
 # Set to yes if Unix sockets cannot be created in an anonymous namespace
@@ -113,6 +117,7 @@ case "$host" in
 		libgc_threads=win32
 		with_sigaltstack=no
 		with_tls=pthread
+		with_sgen_default_concurrent=yes
 		LN_S=cp
 		# This forces libgc to use the DllMain based thread registration code on win32
 		libgc_configure_args="$libgc_configure_args --enable-win32-dllmain=yes"
@@ -128,6 +133,7 @@ case "$host" in
 		libgc_threads=pthreads
 		with_sigaltstack=no
 		use_sigposix=yes
+		with_sgen_default_concurrent=yes
 		;;
 	*-*-kfreebsd*-gnu)
 		CPPFLAGS="$CPPFLAGS -DGC_FREEBSD_THREADS -D_GNU_SOURCE -D_REENTRANT -DUSE_MMAP -DUSE_MUNMAP -DTHREAD_LOCAL_ALLOC -pthread"
@@ -138,6 +144,7 @@ case "$host" in
 		need_link_unlink=yes
 		with_sigaltstack=no
 		use_sigposix=yes
+		with_sgen_default_concurrent=yes
 		;;
 	*-*-*freebsd*)
 		if test "x$PTHREAD_CFLAGS" = "x"; then
@@ -161,6 +168,7 @@ case "$host" in
 		libgc_threads=pthreads
 		use_sigposix=yes
 		has_dtrace=yes
+		with_sgen_default_concurrent=yes
 		;;
 	*-*-*openbsd*)
 		CPPFLAGS="$CPPFLAGS -D_THREAD_SAFE -DGC_OPENBSD_THREADS -DPLATFORM_BSD -D_REENTRANT -DUSE_MMAP"
@@ -175,6 +183,7 @@ case "$host" in
 		libgc_threads=pthreads
 		with_sigaltstack=no
 		use_sigposix=yes
+		with_sgen_default_concurrent=yes
 		;;
 	*-*-linux-android*)
 		platform_android=yes
@@ -238,6 +247,7 @@ case "$host" in
 			disable_munmap=yes
 			;;
 		esac
+		with_sgen_default_concurrent=yes
 		;;
 	*-*-nacl*)
 		CPPFLAGS="$CPPFLAGS -DGC_LINUX_THREADS -D_GNU_SOURCE -D_REENTRANT -DUSE_MMAP"
@@ -310,8 +320,10 @@ case "$host" in
 				CFLAGS_FOR_LIBGC="$CFLAGS_FOR_LIBGC $BROKEN_DARWIN_FLAGS"
 				CPPFLAGS_FOR_EGLIB="$CPPFLAGS_FOR_EGLIB $BROKEN_DARWIN_CPPFLAGS"
 				CFLAGS_FOR_EGLIB="$CFLAGS_FOR_EGLIB $BROKEN_DARWIN_FLAGS"
+				with_sgen_default_concurrent=yes
 				;;
 			x*64-*-darwin*)
+				with_sgen_default_concurrent=yes
 				;;
 			arm*-darwin*)
 				has_dtrace=no
@@ -538,9 +550,6 @@ if test x"$GCC" = xyes; then
 		# We rely on signed overflow to behave
 		CFLAGS="$CFLAGS -fwrapv"
 
-		# We rely on zero length arrays in structs
-		CFLAGS="$CFLAGS -Wno-zero-length-array"
-
 		CFLAGS="$CFLAGS -DMONO_DLL_EXPORT"
 		if test x"$disable_visibility_hidden" = xno; then
 		   # Don't export any symbols by default
@@ -567,6 +576,8 @@ if test x"$GCC" = xyes; then
 	   	   # https://bugzilla.samba.org/show_bug.cgi?id=8118
 	   	   WARN="$WARN -Qunused-arguments"
 		   WARN="$WARN -Wno-unused-function -Wno-tautological-compare -Wno-parentheses-equality -Wno-self-assign -Wno-return-stack-address -Wno-constant-logical-operand"
+		   # We rely on zero length arrays in structs
+		   WARN="$WARN -Wno-zero-length-array"
 		fi
 else
 	# The Sun Forte compiler complains about inline functions that access static variables
@@ -752,7 +763,7 @@ DISABLED_FEATURES=none
 # Set the build profiles and options before things which use them
 #
 
-AC_ARG_WITH(profile4_x,      [  --with-profile4=yes,no          If you want to install the 4.x FX (defaults to yes)],                 [], [with_profile4_x=default])
+AC_ARG_WITH(profile4_x,      [  --with-profile4_x=yes,no        If you want to install the 4.x FX (defaults to yes)],                 [], [with_profile4_x=default])
 AC_ARG_WITH(monodroid,       [  --with-monodroid=yes,no         If you want to build the MonoDroid assemblies (defaults to no)],      [], [with_monodroid=default])
 AC_ARG_WITH(monotouch,       [  --with-monotouch=yes,no         If you want to build the Xamarin.iOS assemblies (defaults to no)],    [], [with_monotouch=default])
 AC_ARG_WITH(monotouch_watch, [  --with-monotouch_watch=yes,no   If you want to build the Xamarin.WatchOS assemblies (defaults to no)],[], [with_monotouch_watch=default])
@@ -769,51 +780,33 @@ dnl
 TEST_PROFILE=default
 enable_llvm_default=no
 
-INVARIANT_AOT_OPTIONS=nimt-trampolines=900,ntrampolines=8000,nrgctx-fetch-trampolines=256,ngsharedvt-trampolines=2800
+with_profile4_x_default=no
+with_monodroid_default=no
+with_monotouch_default=no
+with_monotouch_watch_default=no
+with_monotouch_tv_default=no
+with_xammac_default=no
+with_mobile_static_default=no
+
+with_bitcode_default=no
+with_cooperative_gc_default=no
+
+INVARIANT_AOT_OPTIONS=nimt-trampolines=2000,ntrampolines=8000,nrgctx-fetch-trampolines=256,ngsharedvt-trampolines=4000
 
 if test x$cross_compiling = xyes -o x$enable_mcs_build = xno; then
    DISABLE_MCS_DOCS_default=yes
-   with_profile4_x_default=no
-   with_monodroid_default=no
-   with_monotouch_default=no
-   with_monotouch_watch_default=no
-   with_monotouch_tv_default=no
-   with_xammac_default=no
-   with_mobile_static_default=no
-   with_bitcode_default=no
-   with_cooperative_gc_default=no
 elif test x$with_runtime_preset = xnet_4_x; then
-   with_cooperative_gc_default=no
    with_profile4_x_default=yes
-   with_monodroid_default=no
-   with_monotouch_default=no
-   with_monotouch_watch_default=no
-   with_monotouch_tv_default=no
-   with_xammac_default=no
-   with_mobile_static_default=no
-   with_bitcode_default=no
 elif test x$with_runtime_preset = xall; then
-   with_cooperative_gc_default=no
    with_profile4_x_default=yes
    with_monodroid_default=yes
    with_monotouch_default=yes
    with_monotouch_watch_default=yes
    with_monotouch_tv_default=yes
    with_xammac_default=yes
-   with_mobile_static_default=no
-   with_bitcode_default=no
 elif test x$with_runtime_preset = xmobile_static; then
    DISABLE_MCS_DOCS_default=yes
-   with_cooperative_gc_default=no
-   with_profile4_x_default=no
-   with_monodroid_default=no
-   with_monotouch_default=no
-   with_monotouch_watch_default=no
-   with_monotouch_tv_default=no
-   with_xammac_default=no
    with_mobile_static_default=yes
-   with_bitcode_default=no
-   with_cooperative_gc_default=no
    TEST_PROFILE=mobile_static 
 
    mono_feature_disable_com='yes'
@@ -826,12 +819,6 @@ elif test x$with_runtime_preset = xmobile_static; then
    AOT_RUN_FLAGS="--full-aot"
 elif test x$with_runtime_preset = xbitcode_mobile_static; then
    DISABLE_MCS_DOCS_default=yes
-   with_profile4_x_default=no
-   with_monodroid_default=no
-   with_monotouch_default=no
-   with_monotouch_watch_default=no
-   with_monotouch_tv_default=no
-   with_xammac_default=no
    with_mobile_static_default=yes
    with_bitcode_default=yes
    with_cooperative_gc_default=yes
@@ -846,16 +833,20 @@ elif test x$with_runtime_preset = xbitcode_mobile_static; then
 
    AOT_BUILD_FLAGS="--aot=llvmonly,$INVARIANT_AOT_OPTIONS"
    AOT_RUN_FLAGS="--llvmonly"
+elif test x$with_runtime_preset = xhybrid; then
+   DISABLE_MCS_DOCS_default=yes
+   with_mobile_default=yes
+   TEST_PROFILE=mobile 
+   enable_llvm_default=yes
+
+   mono_feature_disable_com='yes'
+   mono_feature_disable_remoting='yes'
+   mono_feature_disable_appdomains='yes'
+
+   AOT_BUILD_FLAGS="--aot=hybrid,$INVARIANT_AOT_OPTIONS"
+   AOT_RUN_FLAGS="--hybrid-aot"
 else
    with_profile4_x_default=yes
-   with_monodroid_default=no
-   with_monotouch_default=no
-   with_monotouch_watch_default=no
-   with_monotouch_tv_default=no
-   with_bitcode_default=no
-   with_xammac_default=no
-   with_mobile_static_default=no
-   with_cooperative_gc_default=no
 fi
 
 if test "x$AOT_BUILD_FLAGS" != "x"; then :
@@ -1159,20 +1150,6 @@ AC_COMPILE_IFELSE([
    AC_MSG_RESULT(yes)
 ], [
    have_visibility_hidden=no
-   AC_MSG_RESULT(no)
-])
-
-AC_MSG_CHECKING(for deprecated __attribute__)
-AC_TRY_COMPILE([
-     int doit (void) __attribute__ ((deprecated));
-     int doit (void) { return 0; }
-], [
-	return 0;
-], [
-   have_deprecated=yes
-   AC_MSG_RESULT(yes)
-], [
-   have_deprecated=no
    AC_MSG_RESULT(no)
 ])
 
@@ -2672,12 +2649,6 @@ fi
 
 AC_ARG_ENABLE(bcl-opt, [  --disable-bcl-opt	BCL is compiled with no optimizations (allows accurate BCL debugging)], test_bcl_opt=$enableval, test_bcl_opt=yes)
 
-AC_ARG_ENABLE(perf-events, [  --enable-perf-events Enable using `perf` for profiling on Linux], test_perf_events=$enableval, test_perf_events=no)
-if test "x$test_perf_events" = "xyes"; then
-	AC_DEFINE(ENABLE_PERF_EVENTS, 1, [Enable using `perf` for profiling on Linux])
-	AC_SUBST(ENABLE_PERF_EVENTS)
-fi
-
 AC_MSG_CHECKING([if big-arrays are to be enabled])
 AC_ARG_ENABLE(big-arrays,  [  --enable-big-arrays	Enable the allocation and indexing of arrays greater than Int32.MaxValue], enable_big_arrays=$enableval, enable_big_arrays=no)
 if test "x$enable_big_arrays" = "xyes" ; then
@@ -3935,8 +3906,10 @@ dnl **************
 dnl ***  Btls  ***
 dnl **************
 
-AC_ARG_ENABLE(btls, [  --disable-blts             Disable the BoringTls provider], enable_btls=$enableval, enable_btls=$BTLS_SUPPORTED)
+AC_ARG_ENABLE(btls, [  --disable-btls             Disable the BoringTls provider], enable_btls=$enableval, enable_btls=$BTLS_SUPPORTED)
 AC_ARG_WITH(btls_android_ndk, [  --with-btls-android-ndk        Android NDK for BoringTls])
+
+AC_ARG_ENABLE(dynamic-btls, [ --enable-dynamic-btls Place the BTLS provider into a separate shared library/archive.], enable_dynamic_btls=$enableval, enable_dynamic_btls=no)
 
 AM_CONDITIONAL(BTLS, test x$enable_btls = xyes)
 
@@ -3957,7 +3930,11 @@ if test "x$enable_btls" = "xyes"; then
 	case "$BTLS_PLATFORM" in
 	i386)
 		btls_arch=i386
-		btls_cflags="-m32 -arch i386"
+		btls_cflags="-m32"
+		case $host_os in
+			darwin*)
+				btls_cflags="$btls_cflags -arch i386"
+		esac
 		;;
 	x86_64)
 		btls_arch=x86_64
@@ -4245,6 +4222,7 @@ llvm/Makefile
 scripts/mono-find-provides
 scripts/mono-find-requires
 mono/Makefile
+mono/btls/Makefile
 mono/utils/Makefile
 mono/metadata/Makefile
 mono/dis/Makefile
@@ -4408,6 +4386,13 @@ fi
     if test "x$AOT_BUILD_FLAGS" != "x" ; then
       echo "AOT_RUN_FLAGS=$AOT_RUN_FLAGS" >> $srcdir/$mcsdir/build/config.make
       echo "AOT_BUILD_FLAGS=$AOT_BUILD_FLAGS" >> $srcdir/$mcsdir/build/config.make
+    fi
+
+    if test "x$enable_btls" = "xyes"; then
+      echo "HAVE_BTLS=1" >> $srcdir/$mcsdir/build/config.make
+      if test "x$enable_dynamic_btls" = "xyes"; then
+        echo "HAVE_DYNAMIC_BTLS=1" >> $srcdir/$mcsdir/build/config.make
+      fi
     fi
 
   fi

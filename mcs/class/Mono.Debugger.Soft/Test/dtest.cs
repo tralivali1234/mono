@@ -558,7 +558,11 @@ public class DebuggerTests
 		MethodMirror m = entry_point.DeclaringType.Assembly.GetType ("LocalReflectClass").GetMethod ("RunMe");
 
 		Assert.IsNotNull (m);
-		//Console.WriteLine ("X: " + name + " " + m.ILOffsets.Count + " " + m.Locations.Count);
+
+//		foreach (var x in m.Locations) {
+//			Console.WriteLine (x);
+//		}
+
 		var offset = -1;
 		int method_base_linum = m.Locations [0].LineNumber;
 		foreach (var location in m.Locations)
@@ -586,7 +590,11 @@ public class DebuggerTests
 		e = single_step (e.Thread);
 
 		var frame = e.Thread.GetFrames ()[0];
-		Value variable = frame.GetValue (frame.Method.GetLocal ("reflectMe"));
+
+		Assert.IsNotNull (frame);
+		var field = frame.Method.GetLocal ("reflectMe");
+		Assert.IsNotNull (field);
+		Value variable = frame.GetValue (field);
 
 		ObjectMirror thisObj = (ObjectMirror)variable;
 		TypeMirror thisType = thisObj.Type;
@@ -896,6 +904,28 @@ public class DebuggerTests
 		f = e.Thread.GetFrames ()[0];
 		AssertValue (7.0, f.GetValue (f.Method.GetParameters ()[0]));
 		req.Disable ();
+	}
+
+	[Test]
+	public void SingleSteppingNoFrames () {
+		//
+		// Test what happens when starting a single step operation on a thread
+		// with no managed frames
+		//
+		// Run a delegate on a tp thread
+		var e = run_until ("ss_no_frames_2");
+
+		var this_type = e.Thread.GetFrames ()[0].Method.DeclaringType;
+		this_type.SetValue (this_type.GetField ("static_i"), vm.CreateValue (56));
+
+		var thread = e.Thread;
+		var e2 = run_until ("ss_no_frames_3");
+		// The tp thread should be idle now
+		step_req = vm.CreateStepRequest (thread);
+		step_req.Depth = StepDepth.Over;
+		AssertThrows<Exception> (delegate {
+			step_req.Enable ();
+			});
 	}
 
 	[Test]
@@ -3315,6 +3345,9 @@ public class DebuggerTests
 			vm.Resume ();
 			e = GetNextEvent ();
 			if (e is AssemblyUnloadEvent) {
+				AssertThrows<Exception> (delegate () {
+						var assembly_obj = (e as AssemblyUnloadEvent).Assembly.GetAssemblyObject ();
+					});
 				continue;
 			} else {
 				break;
@@ -3593,6 +3626,8 @@ public class DebuggerTests
 			return;
 
 		string srcfile = (e as BreakpointEvent).Method.DeclaringType.GetSourceFiles (true)[0];
+		srcfile = srcfile.Replace ("dtest-app.cs", "TypeLoadClass.cs");
+		Assert.IsTrue (srcfile.Contains ("TypeLoadClass.cs"));
 
 		var req = vm.CreateTypeLoadRequest ();
 		req.SourceFileFilter = new string [] { srcfile.ToUpper () };

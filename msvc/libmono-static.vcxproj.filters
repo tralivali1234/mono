@@ -231,6 +231,9 @@
     <ClInclude Include="..\mono\mini\mini-amd64-gsharedvt.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\mono\mini\mini-windows.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Header Files">
@@ -242,5 +245,10 @@
     <Filter Include="Source Files">
       <UniqueIdentifier>{5370c3c4-b6ec-4f8a-8b21-ce4e782720a6}</UniqueIdentifier>
     </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\mono\mini\Makefile.am.in">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

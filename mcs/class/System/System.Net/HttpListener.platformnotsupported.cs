@@ -26,6 +26,7 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
+using System.Security.Authentication.ExtendedProtection;
 using System.Threading.Tasks;
 
 namespace System.Net {
@@ -33,12 +34,9 @@ namespace System.Net {
 	{
 		internal const string EXCEPTION_MESSAGE = "System.Net.HttpListener is not supported on the current platform.";
 
-		public HttpListener ()
-		{
-			throw new PlatformNotSupportedException (EXCEPTION_MESSAGE);
-		}
+		public delegate ExtendedProtectionPolicy ExtendedProtectionSelector (HttpListenerRequest request);
 
-		internal HttpListener (System.Security.Cryptography.X509Certificates.X509Certificate certificate, Mono.Net.Security.IMonoTlsProvider tlsProvider, Mono.Security.Interface.MonoTlsSettings tlsSettings)
+		public HttpListener ()
 		{
 			throw new PlatformNotSupportedException (EXCEPTION_MESSAGE);
 		}
@@ -78,6 +76,27 @@ namespace System.Net {
 		public bool UnsafeConnectionNtlmAuthentication {
 			get { throw new PlatformNotSupportedException (EXCEPTION_MESSAGE); }
 			set { throw new PlatformNotSupportedException (EXCEPTION_MESSAGE); }
+		}
+
+		public HttpListenerTimeoutManager TimeoutManager {
+			get { throw new PlatformNotSupportedException (EXCEPTION_MESSAGE); }
+		}
+
+		public ExtendedProtectionPolicy ExtendedProtectionPolicy
+		{
+			get { throw new PlatformNotSupportedException (EXCEPTION_MESSAGE); }
+			set { throw new PlatformNotSupportedException (EXCEPTION_MESSAGE); }
+		}
+
+		public ExtendedProtectionSelector ExtendedProtectionSelectorDelegate
+		{
+			get { throw new PlatformNotSupportedException (EXCEPTION_MESSAGE); }
+			set { throw new PlatformNotSupportedException (EXCEPTION_MESSAGE); }
+		}
+
+		public ServiceNameCollection DefaultServiceNames
+		{
+			get { throw new PlatformNotSupportedException (EXCEPTION_MESSAGE); }
 		}
 
 		public void Abort ()

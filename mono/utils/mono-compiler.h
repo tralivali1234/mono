@@ -13,6 +13,12 @@
 #define MONO_ATTR_USED
 #endif
 
+#ifdef __GNUC__
+#define MONO_ATTR_FORMAT_PRINTF(fmt_pos,arg_pos) __attribute__((format(printf,fmt_pos,arg_pos)))
+#else
+#define MONO_ATTR_FORMAT_PRINTF(fmt_pos,arg_pos)
+#endif
+
 #ifdef HAVE_KW_THREAD
 
 #define MONO_HAVE_FAST_TLS
@@ -241,9 +247,6 @@
 #include <direct.h>
 #define mkdir(x)	_mkdir(x)
 
-/* GCC specific functions aren't available */
-#define __builtin_return_address(x)	NULL
-
 #define __func__ __FUNCTION__
 
 #include <BaseTsd.h>
@@ -265,6 +268,13 @@ typedef SSIZE_T ssize_t;
 
 #endif /* _MSC_VER */
 
+#ifdef _MSC_VER
+// Quiet Visual Studio linker warning, LNK4221, in cases when this source file intentional ends up empty.
+#define MONO_EMPTY_SOURCE_FILE(x) void __mono_win32_ ## x ## _quiet_lnk4221 (void) {}
+#else
+#define MONO_EMPTY_SOURCE_FILE(x)
+#endif
+
 #if !defined(_MSC_VER) && !defined(PLATFORM_SOLARIS) && !defined(_WIN32) && !defined(__CYGWIN__) && !defined(MONOTOUCH) && HAVE_VISIBILITY_HIDDEN
 #if MONO_LLVM_LOADED
 #define MONO_LLVM_INTERNAL MONO_API
@@ -273,12 +283,6 @@ typedef SSIZE_T ssize_t;
 #endif
 #else
 #define MONO_LLVM_INTERNAL 
-#endif
-
-#if HAVE_DEPRECATED
-#define MONO_DEPRECATED __attribute__ ((deprecated))
-#else
-#define MONO_DEPRECATED 
 #endif
 
 #ifdef __GNUC__

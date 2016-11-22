@@ -499,7 +499,6 @@ struct _MonoDynamicImage {
 	GHashTable *method_aux_hash;
 	GHashTable *vararg_aux_hash;
 	MonoGHashTable *generic_def_objects;
-	MonoGHashTable *methodspec;
 	/*
 	 * Maps final token values to the object they describe.
 	 */
@@ -638,6 +637,12 @@ mono_image_alloc0 (MonoImage *image, guint size);
 
 char*
 mono_image_strdup (MonoImage *image, const char *s);
+
+char*
+mono_image_strdup_vprintf (MonoImage *image, const char *format, va_list args);
+
+char*
+mono_image_strdup_printf (MonoImage *image, const char *format, ...) MONO_ATTR_FORMAT_PRINTF(2,3);;
 
 GList*
 g_list_prepend_image (MonoImage *image, GList *list, gpointer data);
@@ -911,6 +916,9 @@ mono_image_set_description (MonoImageSet *);
 
 MonoImageSet *
 mono_find_image_set_owner (void *ptr);
+
+void
+mono_loader_register_module (const char *name, MonoDl *module);
 
 #endif /* __MONO_METADATA_INTERNALS_H__ */
 

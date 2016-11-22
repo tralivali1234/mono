@@ -39,6 +39,7 @@ using System.Security.Cryptography.X509Certificates;
 using System;
 using System.Net;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 #if !MOBILE
 using System.Reflection;
@@ -107,6 +108,9 @@ namespace Mono.Net.Security
 				initialized = true;
 			}
 		}
+
+		[MethodImpl (MethodImplOptions.InternalCall)]
+		internal extern static bool IsBtlsSupported ();
 #endif
 
 		static object locker = new object ();
@@ -156,10 +160,9 @@ namespace Mono.Net.Security
 					return;
 				providerRegistration = new Dictionary<string,string> ();
 				providerRegistration.Add ("legacy", "Mono.Net.Security.LegacyTlsProvider");
-#if HAVE_BTLS
-				if (Mono.Btls.MonoBtlsProvider.IsSupported ())
+				providerRegistration.Add ("default", "Mono.Net.Security.LegacyTlsProvider");
+				if (IsBtlsSupported ())
 					providerRegistration.Add ("btls", "Mono.Btls.MonoBtlsProvider");
-#endif
 				X509Helper2.Initialize ();
 			}
 		}
@@ -168,11 +171,8 @@ namespace Mono.Net.Security
 		static MSI.MonoTlsProvider TryDynamicLoad ()
 		{
 			var variable = Environment.GetEnvironmentVariable ("MONO_TLS_PROVIDER");
-			if (variable == null)
-				return null;
-
-			if (string.Equals (variable, "default", StringComparison.OrdinalIgnoreCase))
-				return null;
+			if (string.IsNullOrEmpty (variable))
+				variable = "default";
 
 			return LookupProvider (variable, true);
 		}

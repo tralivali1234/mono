@@ -1,9 +1,21 @@
 if HOST_WIN32
 win32_sources = \
 	console-win32.c \
+	console-win32-internals.h \
+	file-io-windows.c \
+	file-io-windows-internals.h \
+	icall-windows.c \
+	icall-windows-internals.h \
+	marshal-windows.c \
+	marshal-windows-internals.h \
+	mono-security-windows.c \
+	mono-security-windows-internals.h \
 	w32mutex-win32.c \
 	w32semaphore-win32.c \
-	w32event-win32.c
+	w32event-win32.c \
+	w32process-win32.c \
+	w32process-win32-internals.h \
+	socket-io-windows.c
 
 platform_sources = $(win32_sources)
 
@@ -29,7 +41,13 @@ unix_sources = \
 	console-unix.c \
 	w32mutex-unix.c \
 	w32semaphore-unix.c \
-	w32event-unix.c
+	w32event-unix.c \
+	w32process-unix.c \
+	w32process-unix-internals.h \
+	w32process-unix-osx.c \
+	w32process-unix-bsd.c \
+	w32process-unix-haiku.c \
+	w32process-unix-default.c
 
 platform_sources = $(unix_sources)
 endif
@@ -88,7 +106,7 @@ mono-config-dirs.lo: Makefile
 libmonoruntime_config_la_SOURCES = \
 	mono-config-dirs.h		\
 	mono-config-dirs.c
-libmonoruntime_config_la_CPPFLAGS = $(AM_CPPFLAGS) -DMONO_BINDIR=\"$(bindir)/\" -DMONO_ASSEMBLIES=\"$(assembliesdir)\" -DMONO_CFG_DIR=\"$(confdir)\"
+libmonoruntime_config_la_CPPFLAGS = $(AM_CPPFLAGS) -DMONO_BINDIR=\"$(bindir)/\" -DMONO_ASSEMBLIES=\"$(assembliesdir)\" -DMONO_CFG_DIR=\"$(confdir)\" -DMONO_RELOC_LIBDIR=\"../$(reloc_libdir)\"
 
 CLEANFILES = mono-bundle.stamp
 
@@ -107,11 +125,14 @@ common_sources = \
 	cil-coff.h		\
 	class.c			\
 	class-internals.h	\
+	class-inlines.h		\
+	class-accessors.c	\
 	cominterop.c		\
 	cominterop.h		\
 	console-io.h		\
 	coree.c 		\
 	coree.h 		\
+	coree-internals.h \
 	culture-info.h  	\
 	culture-info-tables.h	\
 	debug-helpers.c		\
@@ -129,10 +150,12 @@ common_sources = \
 	exception-internals.h	\
 	file-io.c		\
 	file-io.h		\
+	file-io-internals.h \
 	filewatcher.c		\
 	filewatcher.h		\
 	gc-internals.h		\
 	icall.c			\
+	icall-internals.h \
 	icall-def.h		\
 	image.c			\
 	image-internals.h	\
@@ -144,6 +167,7 @@ common_sources = \
 	lock-tracer.h		\
 	marshal.c		\
 	marshal.h		\
+	marshal-internals.h \
 	mempool.c		\
 	mempool.h		\
 	mempool-internals.h	\
@@ -177,10 +201,13 @@ common_sources = \
 	number-ms.h		\
 	object-internals.h	\
 	opcodes.c		\
+	property-bag.h	\
+	property-bag.c	\
 	socket-io.c		\
 	socket-io.h		\
-	process.c		\
-	process.h		\
+	w32process.c		\
+	w32process.h		\
+	w32process-internals.h		\
 	profiler.c		\
 	profiler-private.h	\
 	rand.h			\
@@ -229,7 +256,9 @@ common_sources = \
 	w32semaphore.h	\
 	w32event.h	\
 	w32handle-namespace.h	\
-	w32handle-namespace.c
+	w32handle-namespace.c	\
+	w32handle.h	\
+	w32handle.c
 
 # These source files have compile time dependencies on GC code
 gc_dependent_sources = \
@@ -252,10 +281,6 @@ boehm_sources = \
 	boehm-gc.c
 
 sgen_sources = \
-	sgen-os-posix.c		\
-	sgen-os-mach.c		\
-	sgen-os-win32.c		\
-	sgen-os-coop.c		\
 	sgen-bridge.c		\
 	sgen-bridge.h		\
 	sgen-bridge-internals.h	\
@@ -279,12 +304,12 @@ libmonoruntimesgen_la_LIBADD = libmonoruntime-config.la
 libmonoruntime_static_la_SOURCES = $(libmonoruntime_la_SOURCES)
 libmonoruntime_static_la_LDFLAGS = -static
 libmonoruntime_static_la_CFLAGS = $(BOEHM_DEFINES)
-libmonoruntime_static_la_LIBADD = $(bundle_obj) $(libmonoruntime_la_LIBADD)
+libmonoruntime_static_la_LIBADD = $(bundle_obj) libmonoruntime-config.la
 
 libmonoruntimesgen_static_la_SOURCES = $(libmonoruntimesgen_la_SOURCES)
 libmonoruntimesgen_static_la_LDFLAGS = -static
 libmonoruntimesgen_static_la_CFLAGS = $(SGEN_DEFINES)
-libmonoruntimesgen_static_la_LIBADD = $(libmonoruntimesgen_la_LIBADD)
+libmonoruntimesgen_static_la_LIBADD = libmonoruntime-config.la
 
 libmonoruntimeincludedir = $(includedir)/mono-$(API_VER)/mono/metadata
 

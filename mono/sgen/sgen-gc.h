@@ -182,7 +182,7 @@ sgen_aligned_addr_hash (gconstpointer ptr)
 	return GPOINTER_TO_UINT (ptr) >> 3;
 }
 
-#define SGEN_PTR_IN_NURSERY(p,bits,start,end)	(((mword)(p) & ~((1 << (bits)) - 1)) == (mword)(start))
+#define SGEN_PTR_IN_NURSERY(p,bits,start,end)	(((mword)(p) & ~(((mword)1 << (bits)) - 1)) == (mword)(start))
 
 #ifdef USER_CONFIG
 
@@ -1032,7 +1032,7 @@ void sgen_env_var_error (const char *env_var, const char *fallback, const char *
 
 /* Utilities */
 
-void sgen_qsort (void *base, size_t nel, size_t width, int (*compar) (const void*, const void*));
+void sgen_qsort (void *array, size_t count, size_t element_size, int (*compare) (const void*, const void*));
 gint64 sgen_timestamp (void);
 
 /*

@@ -3,7 +3,6 @@ thisdir = tools
 net_4_5_dirs := \
 	al		\
 	linker		\
-	tuner		\
 	culevel		\
 	genxs		\
 	mkbundle	\
@@ -47,7 +46,8 @@ net_4_5_dirs := \
 	mdbrebase	\
 	ikdasm		\
 	mono-symbolicate	\
-	linker-analyzer
+	linker-analyzer	\
+	btls
 
 build_SUBDIRS = gacutil security culevel cil-stringreplacer commoncryptogenerator
 net_4_5_SUBDIRS = gacutil
