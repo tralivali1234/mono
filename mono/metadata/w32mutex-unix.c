@@ -1,5 +1,6 @@
-/*
- * w32mutex-unix.c: Runtime support for managed Mutex on Unix
+/**
+ * \file
+ * Runtime support for managed Mutex on Unix
  *
  * Author:
  *	Ludovic Henry (luhenry@microsoft.com)
@@ -11,12 +12,14 @@
 
 #include <pthread.h>
 
+#include "w32error.h"
 #include "w32handle-namespace.h"
-#include "mono/io-layer/io-layer.h"
 #include "mono/metadata/object-internals.h"
 #include "mono/utils/mono-logger-internals.h"
 #include "mono/utils/mono-threads.h"
 #include "mono/metadata/w32handle.h"
+
+#define MAX_PATH 260
 
 typedef struct {
 	MonoNativeThreadId tid;
@@ -59,11 +62,11 @@ thread_disown_mutex (MonoInternalThread *internal, gpointer handle)
 }
 
 static gboolean
-mutex_handle_own (gpointer handle, MonoW32HandleType type, guint32 *statuscode)
+mutex_handle_own (gpointer handle, MonoW32HandleType type, gboolean *abandoned)
 {
 	MonoW32HandleMutex *mutex_handle;
 
-	*statuscode = WAIT_OBJECT_0;
+	*abandoned = FALSE;
 
 	if (!mono_w32handle_lookup (handle, type, (gpointer *)&mutex_handle)) {
 		g_warning ("%s: error looking up %s handle %p", __func__, mono_w32handle_get_typename (type), handle);
@@ -85,7 +88,7 @@ mutex_handle_own (gpointer handle, MonoW32HandleType type, guint32 *statuscode)
 
 	if (mutex_handle->abandoned) {
 		mutex_handle->abandoned = FALSE;
-		*statuscode = WAIT_ABANDONED_0;
+		*abandoned = TRUE;
 	}
 
 	mono_w32handle_set_signal_state (handle, FALSE, FALSE);
@@ -122,9 +125,9 @@ static void mutex_signal(gpointer handle)
 	ves_icall_System_Threading_Mutex_ReleaseMutex_internal (handle);
 }
 
-static gboolean mutex_own (gpointer handle, guint32 *statuscode)
+static gboolean mutex_own (gpointer handle, gboolean *abandoned)
 {
-	return mutex_handle_own (handle, MONO_W32HANDLE_MUTEX, statuscode);
+	return mutex_handle_own (handle, MONO_W32HANDLE_MUTEX, abandoned);
 }
 
 static gboolean mutex_is_owned (gpointer handle)
@@ -139,9 +142,9 @@ static void namedmutex_signal (gpointer handle)
 }
 
 /* NB, always called with the shared handle lock held */
-static gboolean namedmutex_own (gpointer handle, guint32 *statuscode)
+static gboolean namedmutex_own (gpointer handle, gboolean *abandoned)
 {
-	return mutex_handle_own (handle, MONO_W32HANDLE_NAMEDMUTEX, statuscode);
+	return mutex_handle_own (handle, MONO_W32HANDLE_NAMEDMUTEX, abandoned);
 }
 
 static gboolean namedmutex_is_owned (gpointer handle)
@@ -264,7 +267,7 @@ mono_w32mutex_init (void)
 static gpointer mutex_handle_create (MonoW32HandleMutex *mutex_handle, MonoW32HandleType type, gboolean owned)
 {
 	gpointer handle;
-	guint32 statuscode;
+	gboolean abandoned;
 
 	mutex_handle->tid = 0;
 	mutex_handle->recursion = 0;
@@ -274,14 +277,14 @@ static gpointer mutex_handle_create (MonoW32HandleMutex *mutex_handle, MonoW32Ha
 	if (handle == INVALID_HANDLE_VALUE) {
 		g_warning ("%s: error creating %s handle",
 			__func__, mono_w32handle_get_typename (type));
-		SetLastError (ERROR_GEN_FAILURE);
+		mono_w32error_set_last (ERROR_GEN_FAILURE);
 		return NULL;
 	}
 
 	mono_w32handle_lock_handle (handle);
 
 	if (owned)
-		mutex_handle_own (handle, type, &statuscode);
+		mutex_handle_own (handle, type, &abandoned);
 	else
 		mono_w32handle_set_signal_state (handle, TRUE, FALSE);
 
@@ -312,24 +315,26 @@ static gpointer namedmutex_create (gboolean owned, const gunichar2 *name)
 	/* w32 seems to guarantee that opening named objects can't race each other */
 	mono_w32handle_namespace_lock ();
 
-	utf8_name = g_utf16_to_utf8 (name, -1, NULL, NULL, NULL);
+	glong utf8_len = 0;
+	utf8_name = g_utf16_to_utf8 (name, -1, NULL, &utf8_len, NULL);
 
 	handle = mono_w32handle_namespace_search_handle (MONO_W32HANDLE_NAMEDMUTEX, utf8_name);
 	if (handle == INVALID_HANDLE_VALUE) {
 		/* The name has already been used for a different object. */
 		handle = NULL;
-		SetLastError (ERROR_INVALID_HANDLE);
+		mono_w32error_set_last (ERROR_INVALID_HANDLE);
 	} else if (handle) {
 		/* Not an error, but this is how the caller is informed that the mutex wasn't freshly created */
-		SetLastError (ERROR_ALREADY_EXISTS);
+		mono_w32error_set_last (ERROR_ALREADY_EXISTS);
 
 		/* mono_w32handle_namespace_search_handle already adds a ref to the handle */
 	} else {
 		/* A new named mutex */
 		MonoW32HandleNamedMutex namedmutex_handle;
 
-		strncpy (&namedmutex_handle.sharedns.name [0], utf8_name, MAX_PATH);
-		namedmutex_handle.sharedns.name [MAX_PATH] = '\0';
+		size_t len = utf8_len < MAX_PATH ? utf8_len : MAX_PATH;
+		memcpy (&namedmutex_handle.sharedns.name [0], utf8_name, len);
+		namedmutex_handle.sharedns.name [len] = '\0';
 
 		handle = mutex_handle_create ((MonoW32HandleMutex*) &namedmutex_handle, MONO_W32HANDLE_NAMEDMUTEX, owned);
 	}
@@ -351,14 +356,14 @@ ves_icall_System_Threading_Mutex_CreateMutex_internal (MonoBoolean owned, MonoSt
 	/* Need to blow away any old errors here, because code tests
 	 * for ERROR_ALREADY_EXISTS on success (!) to see if a mutex
 	 * was freshly created */
-	SetLastError (ERROR_SUCCESS);
+	mono_w32error_set_last (ERROR_SUCCESS);
 
 	if (!name) {
 		mutex = mutex_create (owned);
 	} else {
 		mutex = namedmutex_create (owned, mono_string_chars (name));
 
-		if (GetLastError () == ERROR_ALREADY_EXISTS)
+		if (mono_w32error_get_last () == ERROR_ALREADY_EXISTS)
 			*created = FALSE;
 	}
 
@@ -374,7 +379,7 @@ ves_icall_System_Threading_Mutex_ReleaseMutex_internal (gpointer handle)
 	gboolean ret;
 
 	if (handle == NULL) {
-		SetLastError (ERROR_INVALID_HANDLE);
+		mono_w32error_set_last (ERROR_INVALID_HANDLE);
 		return FALSE;
 	}
 
@@ -383,7 +388,7 @@ ves_icall_System_Threading_Mutex_ReleaseMutex_internal (gpointer handle)
 	case MONO_W32HANDLE_NAMEDMUTEX:
 		break;
 	default:
-		SetLastError (ERROR_INVALID_HANDLE);
+		mono_w32error_set_last (ERROR_INVALID_HANDLE);
 		return FALSE;
 	}
 

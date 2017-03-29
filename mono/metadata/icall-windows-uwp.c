@@ -1,5 +1,6 @@
-/*
- * icall-windows-uwp.c: UWP icall support for Mono.
+/**
+ * \file
+ * UWP icall support for Mono.
  *
  * Copyright 2016 Microsoft
  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
@@ -30,7 +31,7 @@ MonoArray *
 mono_icall_get_logical_drives (void)
 {
 	MonoError mono_error;
-	mono_error_init (&mono_error);
+	error_init (&mono_error);
 
 	g_unsupported_api ("GetLogicalDriveStrings");
 
@@ -46,7 +47,7 @@ void
 mono_icall_broadcast_setting_change (void)
 {
 	MonoError mono_error;
-	mono_error_init (&mono_error);
+	error_init (&mono_error);
 
 	g_unsupported_api ("SendMessageTimeout");
 
@@ -62,7 +63,7 @@ guint32
 mono_icall_drive_info_get_drive_type (MonoString *root_path_name)
 {
 	MonoError mono_error;
-	mono_error_init (&mono_error);
+	error_init (&mono_error);
 
 	g_unsupported_api ("GetDriveType");
 
@@ -76,7 +77,7 @@ gint32
 mono_icall_wait_for_input_idle (gpointer handle, gint32 milliseconds)
 {
 	MonoError mono_error;
-	mono_error_init (&mono_error);
+	error_init (&mono_error);
 
 	g_unsupported_api ("WaitForInputIdle");
 

@@ -1,5 +1,6 @@
-/*
- * mono-context.c: plat independent machine state definitions
+/**
+ * \file
+ * plat independent machine state definitions
  *
  *
  * Copyright (c) 2011 Novell, Inc (http://www.novell.com)
@@ -60,6 +61,16 @@ mono_sigctx_to_monoctx (void *sigctx, MonoContext *mctx)
 	mctx->esi = UCONTEXT_REG_ESI (ctx);
 	mctx->edi = UCONTEXT_REG_EDI (ctx);
 	mctx->eip = UCONTEXT_REG_EIP (ctx);
+#ifdef UCONTEXT_REG_XMM
+	mctx->fregs [0] = UCONTEXT_REG_XMM0 (ctx);
+	mctx->fregs [1] = UCONTEXT_REG_XMM1 (ctx);
+	mctx->fregs [2] = UCONTEXT_REG_XMM2 (ctx);
+	mctx->fregs [3] = UCONTEXT_REG_XMM3 (ctx);
+	mctx->fregs [4] = UCONTEXT_REG_XMM4 (ctx);
+	mctx->fregs [5] = UCONTEXT_REG_XMM5 (ctx);
+	mctx->fregs [6] = UCONTEXT_REG_XMM6 (ctx);
+	mctx->fregs [7] = UCONTEXT_REG_XMM7 (ctx);
+#endif
 #elif defined(HOST_WIN32)
 	CONTEXT *context = (CONTEXT*)sigctx;
 
@@ -106,6 +117,16 @@ mono_monoctx_to_sigctx (MonoContext *mctx, void *sigctx)
 	UCONTEXT_REG_ESI (ctx) = mctx->esi;
 	UCONTEXT_REG_EDI (ctx) = mctx->edi;
 	UCONTEXT_REG_EIP (ctx) = mctx->eip;
+#ifdef UCONTEXT_REG_XMM
+	UCONTEXT_REG_XMM0 (ctx) = mctx->fregs [0];
+	UCONTEXT_REG_XMM1 (ctx) = mctx->fregs [1];
+	UCONTEXT_REG_XMM2 (ctx) = mctx->fregs [2];
+	UCONTEXT_REG_XMM3 (ctx) = mctx->fregs [3];
+	UCONTEXT_REG_XMM4 (ctx) = mctx->fregs [4];
+	UCONTEXT_REG_XMM5 (ctx) = mctx->fregs [5];
+	UCONTEXT_REG_XMM6 (ctx) = mctx->fregs [6];
+	UCONTEXT_REG_XMM7 (ctx) = mctx->fregs [7];
+#endif
 #elif defined(HOST_WIN32)
 	CONTEXT *context = (CONTEXT*)sigctx;
 
@@ -386,10 +407,16 @@ mono_sigctx_to_monoctx (void *sigctx, MonoContext *mctx)
 	memcpy (mctx->regs, UCONTEXT_GREGS (sigctx), sizeof (mgreg_t) * 31);
 	mctx->pc = UCONTEXT_REG_PC (sigctx);
 	mctx->regs [ARMREG_SP] = UCONTEXT_REG_SP (sigctx);
-	/*
-	 * We don't handle fp regs, this is not currrently a
-	 * problem, since we don't allocate them globally.
-	 */
+#ifdef __linux__
+	struct fpsimd_context *fpctx = (struct fpsimd_context*)&((ucontext_t*)sigctx)->uc_mcontext.__reserved;
+	int i;
+
+	g_assert (fpctx->head.magic == FPSIMD_MAGIC);
+	for (i = 0; i < 32; ++i)
+		/* Only store the bottom 8 bytes for now */
+		*(guint64*)&(mctx->fregs [i]) = fpctx->vregs [i];
+#endif
+	/* FIXME: apple */
 #endif
 }
 
@@ -446,8 +473,9 @@ mono_sigctx_to_monoctx (void *sigctx, MonoContext *mctx)
 
 	mctx->sc_ir = UCONTEXT_REG_NIP(uc);
 	mctx->sc_sp = UCONTEXT_REG_Rn(uc, 1);
-	memcpy (&mctx->regs, &UCONTEXT_REG_Rn(uc, 13), sizeof (mgreg_t) * MONO_SAVED_GREGS);
-	memcpy (&mctx->fregs, &UCONTEXT_REG_FPRn(uc, 14), sizeof (double) * MONO_SAVED_FREGS);
+
+	memcpy (&mctx->regs, &UCONTEXT_REG_Rn(uc, 0), sizeof (mgreg_t) * MONO_MAX_IREGS);
+	memcpy (&mctx->fregs, &UCONTEXT_REG_FPRn(uc, 0), sizeof (double) * MONO_MAX_FREGS);
 }
 
 void
@@ -455,10 +483,12 @@ mono_monoctx_to_sigctx (MonoContext *mctx, void *sigctx)
 {
 	os_ucontext *uc = sigctx;
 
+	memcpy (&UCONTEXT_REG_Rn(uc, 0), &mctx->regs, sizeof (mgreg_t) * MONO_MAX_IREGS);
+	memcpy (&UCONTEXT_REG_FPRn(uc, 0), &mctx->fregs, sizeof (double) * MONO_MAX_FREGS);
+
+	/* The valid values for pc and sp are stored here and not in regs array */
 	UCONTEXT_REG_NIP(uc) = mctx->sc_ir;
 	UCONTEXT_REG_Rn(uc, 1) = mctx->sc_sp;
-	memcpy (&UCONTEXT_REG_Rn(uc, 13), &mctx->regs, sizeof (mgreg_t) * MONO_SAVED_GREGS);
-	memcpy (&UCONTEXT_REG_FPRn(uc, 14), &mctx->fregs, sizeof (double) * MONO_SAVED_FREGS);
 }
 
 #endif /* #if defined(__i386__) */

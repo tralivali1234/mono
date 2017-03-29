@@ -1,5 +1,6 @@
-/*
- * mini-generic-sharing.c: Support functions for generic sharing.
+/**
+ * \file
+ * Support functions for generic sharing.
  *
  * Author:
  *   Mark Probst (mark.probst@gmail.com)
@@ -532,6 +533,7 @@ inflate_info (MonoRuntimeGenericContextInfoTemplate *oti, MonoGenericContext *co
 	case MONO_RGCTX_INFO_ARRAY_ELEMENT_SIZE:
 	case MONO_RGCTX_INFO_VALUE_SIZE:
 	case MONO_RGCTX_INFO_CLASS_BOX_TYPE:
+	case MONO_RGCTX_INFO_CLASS_IS_REF_OR_CONTAINS_REFS:
 	case MONO_RGCTX_INFO_MEMCPY:
 	case MONO_RGCTX_INFO_BZERO:
 	case MONO_RGCTX_INFO_LOCAL_OFFSET:
@@ -870,7 +872,7 @@ class_get_rgctx_template_oti (MonoClass *klass, int type_argc, guint32 slot, gbo
 static gpointer
 class_type_info (MonoDomain *domain, MonoClass *klass, MonoRgctxInfoType info_type, MonoError *error)
 {
-	mono_error_init (error);
+	error_init (error);
 
 	switch (info_type) {
 	case MONO_RGCTX_INFO_STATIC_DATA: {
@@ -913,6 +915,13 @@ class_type_info (MonoDomain *domain, MonoClass *klass, MonoRgctxInfoType info_ty
 			return GUINT_TO_POINTER (MONO_GSHAREDVT_BOX_TYPE_NULLABLE);
 		else
 			return GUINT_TO_POINTER (MONO_GSHAREDVT_BOX_TYPE_VTYPE);
+	case MONO_RGCTX_INFO_CLASS_IS_REF_OR_CONTAINS_REFS:
+		mono_class_init (klass);
+		/* Can't return 0 */
+		if (MONO_TYPE_IS_REFERENCE (&klass->byval_arg) || klass->has_references)
+			return GUINT_TO_POINTER (2);
+		else
+			return GUINT_TO_POINTER (1);
 	case MONO_RGCTX_INFO_MEMCPY:
 	case MONO_RGCTX_INFO_BZERO: {
 		static MonoMethod *memcpy_method [17];
@@ -1538,7 +1547,7 @@ instantiate_info (MonoDomain *domain, MonoRuntimeGenericContextInfoTemplate *oti
 	gpointer data;
 	gboolean temporary;
 
-	mono_error_init (error);
+	error_init (error);
 
 	if (!oti->data)
 		return NULL;
@@ -1566,6 +1575,7 @@ instantiate_info (MonoDomain *domain, MonoRuntimeGenericContextInfoTemplate *oti
 	case MONO_RGCTX_INFO_ARRAY_ELEMENT_SIZE:
 	case MONO_RGCTX_INFO_VALUE_SIZE:
 	case MONO_RGCTX_INFO_CLASS_BOX_TYPE:
+	case MONO_RGCTX_INFO_CLASS_IS_REF_OR_CONTAINS_REFS:
 	case MONO_RGCTX_INFO_MEMCPY:
 	case MONO_RGCTX_INFO_BZERO:
 	case MONO_RGCTX_INFO_NULLABLE_CLASS_BOX:
@@ -2007,6 +2017,7 @@ mono_rgctx_info_type_to_str (MonoRgctxInfoType type)
 	case MONO_RGCTX_INFO_ARRAY_ELEMENT_SIZE: return "ARRAY_ELEMENT_SIZE";
 	case MONO_RGCTX_INFO_VALUE_SIZE: return "VALUE_SIZE";
 	case MONO_RGCTX_INFO_CLASS_BOX_TYPE: return "CLASS_BOX_TYPE";
+	case MONO_RGCTX_INFO_CLASS_IS_REF_OR_CONTAINS_REFS: return "CLASS_IS_REF_OR_CONTAINS_REFS";
 	case MONO_RGCTX_INFO_FIELD_OFFSET: return "FIELD_OFFSET";
 	case MONO_RGCTX_INFO_METHOD_GSHAREDVT_OUT_TRAMPOLINE: return "METHOD_GSHAREDVT_OUT_TRAMPOLINE";
 	case MONO_RGCTX_INFO_METHOD_GSHAREDVT_OUT_TRAMPOLINE_VIRT: return "METHOD_GSHAREDVT_OUT_TRAMPOLINE_VIRT";
@@ -2095,6 +2106,7 @@ info_equal (gpointer data1, gpointer data2, MonoRgctxInfoType info_type)
 	case MONO_RGCTX_INFO_ARRAY_ELEMENT_SIZE:
 	case MONO_RGCTX_INFO_VALUE_SIZE:
 	case MONO_RGCTX_INFO_CLASS_BOX_TYPE:
+	case MONO_RGCTX_INFO_CLASS_IS_REF_OR_CONTAINS_REFS:
 	case MONO_RGCTX_INFO_MEMCPY:
 	case MONO_RGCTX_INFO_BZERO:
 	case MONO_RGCTX_INFO_NULLABLE_CLASS_BOX:
@@ -2148,6 +2160,7 @@ mini_rgctx_info_type_to_patch_info_type (MonoRgctxInfoType info_type)
 	case MONO_RGCTX_INFO_ARRAY_ELEMENT_SIZE:
 	case MONO_RGCTX_INFO_VALUE_SIZE:
 	case MONO_RGCTX_INFO_CLASS_BOX_TYPE:
+	case MONO_RGCTX_INFO_CLASS_IS_REF_OR_CONTAINS_REFS:
 	case MONO_RGCTX_INFO_MEMCPY:
 	case MONO_RGCTX_INFO_BZERO:
 	case MONO_RGCTX_INFO_NULLABLE_CLASS_BOX:
@@ -2320,7 +2333,7 @@ fill_runtime_generic_context (MonoVTable *class_vtable, MonoRuntimeGenericContex
 	int rgctx_index;
 	gboolean do_free;
 
-	mono_error_init (error);
+	error_init (error);
 
 	g_assert (rgctx);
 
@@ -2365,6 +2378,7 @@ fill_runtime_generic_context (MonoVTable *class_vtable, MonoRuntimeGenericContex
 										method_inst ? method_inst->type_argc : 0, slot, TRUE, TRUE, &do_free);
 	/* This might take the loader lock */
 	info = instantiate_info (domain, &oti, &context, klass, error);
+	return_val_if_nok (error, NULL);
 	g_assert (info);
 
 	/*
@@ -2407,7 +2421,7 @@ mono_class_fill_runtime_generic_context (MonoVTable *class_vtable, guint32 slot,
 	MonoRuntimeGenericContext *rgctx;
 	gpointer info;
 
-	mono_error_init (error);
+	error_init (error);
 
 	mono_domain_lock (domain);
 
@@ -2672,7 +2686,7 @@ mini_method_is_open (MonoMethod *method)
 }
 
 /* Lazy class loading functions */
-static GENERATE_TRY_GET_CLASS_WITH_CACHE (iasync_state_machine, System.Runtime.CompilerServices, IAsyncStateMachine)
+static GENERATE_TRY_GET_CLASS_WITH_CACHE (iasync_state_machine, "System.Runtime.CompilerServices", "IAsyncStateMachine")
 
 static G_GNUC_UNUSED gboolean
 is_async_state_machine_class (MonoClass *klass)
@@ -3041,7 +3055,7 @@ mini_get_basic_type_from_generic (MonoType *type)
 		return type;
 	else if (!type->byref && (type->type == MONO_TYPE_VAR || type->type == MONO_TYPE_MVAR)) {
 		MonoType *constraint = type->data.generic_param->gshared_constraint;
-		/* The gparam serial encodes the type this gparam can represent */
+		/* The gparam constraint encodes the type this gparam can represent */
 		if (!constraint) {
 			return &mono_defaults.object_class->byval_arg;
 		} else {
@@ -3059,7 +3073,7 @@ mini_get_basic_type_from_generic (MonoType *type)
 /*
  * mini_type_get_underlying_type:
  *
- *   Return the underlying type of TYPE, taking into account enums, byref, bool, char and generic
+ *   Return the underlying type of TYPE, taking into account enums, byref, bool, char, ref types and generic
  * sharing.
  */
 MonoType*
@@ -3078,6 +3092,9 @@ mini_type_get_underlying_type (MonoType *type)
 	case MONO_TYPE_CHAR:
 		return &mono_defaults.uint16_class->byval_arg;
 	case MONO_TYPE_STRING:
+	case MONO_TYPE_CLASS:
+	case MONO_TYPE_ARRAY:
+	case MONO_TYPE_SZARRAY:
 		return &mono_defaults.object_class->byval_arg;
 	default:
 		return type;
@@ -3576,7 +3593,9 @@ static gboolean gsharedvt_supported;
 void
 mono_set_generic_sharing_vt_supported (gboolean supported)
 {
-	gsharedvt_supported = supported;
+	/* ensure we do not disable gsharedvt once it's been enabled */
+	if (!gsharedvt_supported  && supported)
+		gsharedvt_supported = TRUE;
 }
 
 #ifdef MONO_ARCH_GSHAREDVT_SUPPORTED

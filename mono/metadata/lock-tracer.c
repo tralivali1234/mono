@@ -1,5 +1,6 @@
-/*
- * lock-tracer.c: Runtime simple lock tracer
+/**
+ * \file
+ * Runtime simple lock tracer
  *
  * Authors:
  *	Rodrigo Kumpera (rkumpera@novell.com)
@@ -20,7 +21,6 @@
 #include <execinfo.h>
 #endif
 
-#include <mono/io-layer/io-layer.h>
 #include <mono/utils/mono-compiler.h>
 
 #include "lock-tracer.h"

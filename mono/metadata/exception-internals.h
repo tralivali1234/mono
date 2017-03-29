@@ -1,3 +1,7 @@
+/**
+ * \file
+ */
+
 #ifndef _MONO_METADATA_EXCEPTION_INTERNALS_H_
 #define _MONO_METADATA_EXCEPTION_INTERNALS_H_
 
@@ -25,5 +29,11 @@ MonoException *
 mono_exception_from_token_two_strings_checked (MonoImage *image, uint32_t token,
 					       MonoString *a1, MonoString *a2,
 					       MonoError *error);
+
+
+typedef int (*MonoGetSeqPointFunc) (MonoDomain *domain, MonoMethod *method, gint32 native_offset);
+
+void
+mono_install_get_seq_point (MonoGetSeqPointFunc func);
 
 #endif

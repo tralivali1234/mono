@@ -1,3 +1,7 @@
+/**
+ * \file
+ */
+
 #ifndef __MONO_MINI_PPC_H__
 #define __MONO_MINI_PPC_H__
 
@@ -18,6 +22,9 @@
 
 #define MONO_SAVED_GREGS 19
 #define MONO_SAVED_FREGS 18
+
+#define MONO_PPC_FIRST_SAVED_GREG ppc_r13
+#define MONO_PPC_FIRST_SAVED_FREG ppc_f14
 
 #define MONO_ARCH_FRAME_ALIGNMENT 16
 

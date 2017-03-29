@@ -1,3 +1,6 @@
+/**
+ * \file
+ */
 
 #ifndef _MONO_METADATA_W32HANDLE_H_
 #define _MONO_METADATA_W32HANDLE_H_
@@ -5,11 +8,19 @@
 #include <config.h>
 #include <glib.h>
 
+#ifdef HOST_WIN32
+#include <windows.h>
+#endif
+
 #ifndef INVALID_HANDLE_VALUE
 #define INVALID_HANDLE_VALUE (gpointer)-1
 #endif
 
 #define MONO_W32HANDLE_MAXIMUM_WAIT_OBJECTS 64
+
+#ifndef MONO_INFINITE_WAIT
+#define MONO_INFINITE_WAIT ((guint32) 0xFFFFFFFF)
+#endif
 
 typedef enum {
 	MONO_W32HANDLE_UNUSED = 0,
@@ -41,31 +52,31 @@ typedef struct
 {
 	void (*close)(gpointer handle, gpointer data);
 
-	/* SignalObjectAndWait */
+	/* mono_w32handle_signal_and_wait */
 	void (*signal)(gpointer signal);
 
-	/* Called by WaitForSingleObject and WaitForMultipleObjects,
+	/* Called by mono_w32handle_wait_one and mono_w32handle_wait_multiple,
 	 * with the handle locked (shared handles aren't locked.)
 	 * Returns TRUE if ownership was established, false otherwise.
-	 * If TRUE, *statuscode contains a status code such as
+	 * If TRUE, *abandoned contains a status code such as
 	 * WAIT_OBJECT_0 or WAIT_ABANDONED_0.
 	 */
-	gboolean (*own_handle)(gpointer handle, guint32 *statuscode);
+	gboolean (*own_handle)(gpointer handle, gboolean *abandoned);
 
-	/* Called by WaitForSingleObject and WaitForMultipleObjects, if the
+	/* Called by mono_w32handle_wait_one and mono_w32handle_wait_multiple, if the
 	 * handle in question is "ownable" (ie mutexes), to see if the current
 	 * thread already owns this handle
 	 */
 	gboolean (*is_owned)(gpointer handle);
 
-	/* Called by WaitForSingleObject and WaitForMultipleObjects,
+	/* Called by mono_w32handle_wait_one and mono_w32handle_wait_multiple,
 	 * if the handle in question needs a special wait function
 	 * instead of using the normal handle signal mechanism.
-	 * Returns the WaitForSingleObject return code.
+	 * Returns the mono_w32handle_wait_one return code.
 	 */
 	MonoW32HandleWaitRet (*special_wait)(gpointer handle, guint32 timeout, gboolean *alerted);
 
-	/* Called by WaitForSingleObject and WaitForMultipleObjects,
+	/* Called by mono_w32handle_wait_one and mono_w32handle_wait_multiple,
 	 * if the handle in question needs some preprocessing before the
 	 * signal wait.
 	 */
@@ -104,6 +115,9 @@ mono_w32handle_new (MonoW32HandleType type, gpointer handle_specific);
 
 gpointer
 mono_w32handle_new_fd (MonoW32HandleType type, int fd, gpointer handle_specific);
+
+gboolean
+mono_w32handle_close (gpointer handle);
 
 MonoW32HandleType
 mono_w32handle_get_type (gpointer handle);
@@ -158,5 +172,25 @@ mono_w32handle_wait_multiple (gpointer *handles, gsize nhandles, gboolean waital
 
 MonoW32HandleWaitRet
 mono_w32handle_signal_and_wait (gpointer signal_handle, gpointer wait_handle, guint32 timeout, gboolean alertable);
+
+#ifdef HOST_WIN32
+static inline MonoW32HandleWaitRet
+mono_w32handle_convert_wait_ret (guint32 res, guint32 numobjects)
+{
+	if (res >= WAIT_OBJECT_0 && res <= WAIT_OBJECT_0 + numobjects - 1)
+		return MONO_W32HANDLE_WAIT_RET_SUCCESS_0 + (res - WAIT_OBJECT_0);
+	else if (res >= WAIT_ABANDONED_0 && res <= WAIT_ABANDONED_0 + numobjects - 1)
+		return MONO_W32HANDLE_WAIT_RET_ABANDONED_0 + (res - WAIT_ABANDONED_0);
+	else if (res == WAIT_IO_COMPLETION)
+		return MONO_W32HANDLE_WAIT_RET_ALERTED;
+	else if (res == WAIT_TIMEOUT)
+		return MONO_W32HANDLE_WAIT_RET_TIMEOUT;
+	else if (res == WAIT_FAILED)
+		return MONO_W32HANDLE_WAIT_RET_FAILED;
+	else
+		g_error ("%s: unknown res value %d", __func__, res);
+}
+#endif
+
 
 #endif /* _MONO_METADATA_W32HANDLE_H_ */

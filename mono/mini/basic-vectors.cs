@@ -717,7 +717,6 @@ public class VectorTests {
 		return 0;
 	}
 
-#if FALSE
 	//
 	// Vector<T>
 	//
@@ -1045,10 +1044,17 @@ public class VectorTests {
 	public static int test_0_vector_t_cast_vector_int32 () {
 		var v1 = new Vector<long> (new long [] { 0x123456789abcdef0L, 0x23456789abcdef01L });
 		var v = (Vector<int>)v1;
-		if ((uint)v [0] != 0x9abcdef0 || (uint)v [1] != 0x12345678)
-			return 1;
-		if ((uint)v [2] != 0xabcdef01 || (uint)v [3] != 0x23456789)
-			return 2;
+		if (BitConverter.IsLittleEndian) {
+			if ((uint)v [0] != 0x9abcdef0 || (uint)v [1] != 0x12345678)
+				return 1;
+			if ((uint)v [2] != 0xabcdef01 || (uint)v [3] != 0x23456789)
+				return 2;
+		} else {
+			if ((uint)v [1] != 0x9abcdef0 || (uint)v [0] != 0x12345678)
+				return 1;
+			if ((uint)v [3] != 0xabcdef01 || (uint)v [2] != 0x23456789)
+				return 2;
+		}
 		return 0;
 	}
 
@@ -1392,6 +1398,26 @@ public class VectorTests {
 		return 0;
 	}
 
-#endif
+	// Vector<T>.CopyTo
+	[MethodImplAttribute (MethodImplOptions.NoInlining)]
+	public static void vector_copyto<T> (Vector<T> v1, T[] array, int index) where T: struct {
+		v1.CopyTo (array, index);
+	}
 
+	public static int test_0_vector_byte_copyto () {
+		var v1 = new Vector<byte> (new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 });
+
+		byte[] arr = new byte [256];
+		vector_copyto (v1, arr, 1);
+		for (int i = 0; i < 16; ++i)
+			if (arr [i + 1] != (i + 1))
+				return 1;
+		vector_copyto (v1, arr, 240);
+		try {
+			vector_copyto (v1, arr, 241);
+			return 1;
+		} catch (ArgumentException) {
+		}
+		return 0;
+	}
 }

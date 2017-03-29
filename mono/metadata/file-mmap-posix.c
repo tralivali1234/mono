@@ -1,5 +1,6 @@
-/*
- * file-mmap-posix.c: File mmap internal calls
+/**
+ * \file
+ * File mmap internal calls
  *
  * Author:
  *	Rodrigo Kumpera
@@ -32,7 +33,7 @@
 
 
 #include <mono/metadata/object.h>
-#include <mono/metadata/file-io.h>
+#include <mono/metadata/w32file.h>
 #include <mono/metadata/file-mmap.h>
 #include <mono/utils/atomic.h>
 #include <mono/utils/mono-memory-model.h>

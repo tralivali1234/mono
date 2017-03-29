@@ -1,5 +1,6 @@
-/*
- * boehm-gc.c: GC implementation using either the installed or included Boehm GC.
+/**
+ * \file
+ * GC implementation using either the installed or included Boehm GC.
  *
  * Copyright 2001-2003 Ximian, Inc (http://www.ximian.com)
  * Copyright 2004-2011 Novell, Inc (http://www.novell.com)
@@ -24,6 +25,7 @@
 #include <mono/metadata/runtime.h>
 #include <mono/metadata/handle.h>
 #include <mono/metadata/sgen-toggleref.h>
+#include <mono/metadata/w32handle.h>
 #include <mono/utils/atomic.h>
 #include <mono/utils/mono-logger-internals.h>
 #include <mono/utils/mono-memory-model.h>
@@ -258,9 +260,6 @@ mono_gc_base_init (void)
 	GC_set_on_collection_event (on_gc_notification);
 	GC_on_heap_resize = on_gc_heap_resize;
 
-	MONO_GC_REGISTER_ROOT_FIXED (gc_handles [HANDLE_NORMAL].entries, MONO_ROOT_SOURCE_GC_HANDLE, "gc handles table");
-	MONO_GC_REGISTER_ROOT_FIXED (gc_handles [HANDLE_PINNED].entries, MONO_ROOT_SOURCE_GC_HANDLE, "gc handles table");
-
 	gc_initialized = TRUE;
 }
 
@@ -272,15 +271,15 @@ mono_gc_base_cleanup (void)
 
 /**
  * mono_gc_collect:
- * @generation: GC generation identifier
+ * \param generation GC generation identifier
  *
  * Perform a garbage collection for the given generation, higher numbers
  * mean usually older objects. Collecting a high-numbered generation
  * implies collecting also the lower-numbered generations.
- * The maximum value for @generation can be retrieved with a call to
- * mono_gc_max_generation(), so this function is usually called as:
+ * The maximum value for \p generation can be retrieved with a call to
+ * \c mono_gc_max_generation, so this function is usually called as:
  *
- * 	mono_gc_collect (mono_gc_max_generation ());
+ * <code>mono_gc_collect (mono_gc_max_generation ());</code>
  */
 void
 mono_gc_collect (int generation)
@@ -308,12 +307,12 @@ mono_gc_max_generation (void)
 
 /**
  * mono_gc_get_generation:
- * @object: a managed object
+ * \param object a managed object
  *
- * Get the garbage collector's generation that @object belongs to.
+ * Get the garbage collector's generation that \p object belongs to.
  * Use this has a hint only.
  *
- * Returns: a garbage collector generation number
+ * \returns a garbage collector generation number
  */
 int
 mono_gc_get_generation  (MonoObject *object)
@@ -323,12 +322,12 @@ mono_gc_get_generation  (MonoObject *object)
 
 /**
  * mono_gc_collection_count:
- * @generation: a GC generation number
+ * \param generation a GC generation number
  *
  * Get how many times a garbage collection has been performed
- * for the given @generation number.
+ * for the given \p generation number.
  *
- * Returns: the number of garbage collections
+ * \returns the number of garbage collections
  */
 int
 mono_gc_collection_count (int generation)
@@ -338,13 +337,13 @@ mono_gc_collection_count (int generation)
 
 /**
  * mono_gc_add_memory_pressure:
- * @value: amount of bytes
+ * \param value amount of bytes
  *
  * Adjust the garbage collector's view of how many bytes of memory
  * are indirectly referenced by managed objects (for example unmanaged
  * memory holding image or other binary data).
  * This is a hint only to the garbage collector algorithm.
- * Note that negative amounts of @value will decrease the memory
+ * Note that negative amounts of p value will decrease the memory
  * pressure.
  */
 void
@@ -537,6 +536,12 @@ mono_gc_register_root (char *start, size_t size, void *descr, MonoGCRootSource s
 	return TRUE;
 }
 
+int
+mono_gc_register_root_wbarrier (char *start, size_t size, MonoGCDescriptor descr, MonoGCRootSource source, const char *msg)
+{
+	return mono_gc_register_root (start, size, descr, source, msg);
+}
+
 void
 mono_gc_deregister_root (char* addr)
 {
@@ -614,6 +619,12 @@ mono_gc_make_descr_from_bitmap (gsize *bitmap, int numbits)
 }
 
 void*
+mono_gc_make_vector_descr (void)
+{
+	return NULL;
+}
+
+void*
 mono_gc_make_root_descr_all_refs (int numbits)
 {
 	return NULL;
@@ -622,25 +633,13 @@ mono_gc_make_root_descr_all_refs (int numbits)
 void*
 mono_gc_alloc_fixed (size_t size, void *descr, MonoGCRootSource source, const char *msg)
 {
-	/* To help track down typed allocation bugs */
-	/*
-	static int count;
-	count ++;
-	if (count == atoi (g_getenv ("COUNT2")))
-		printf ("HIT!\n");
-	if (count > atoi (g_getenv ("COUNT2")))
-		return GC_MALLOC (size);
-	*/
-
-	if (descr)
-		return GC_MALLOC_EXPLICITLY_TYPED (size, (GC_descr)descr);
-	else
-		return GC_MALLOC (size);
+	return GC_MALLOC_UNCOLLECTABLE (size);
 }
 
 void
 mono_gc_free_fixed (void* addr)
 {
+	GC_FREE (addr);
 }
 
 void *
@@ -867,7 +866,7 @@ mono_gc_get_restart_signal (void)
 }
 
 #if defined(USE_COMPILER_TLS) && defined(__linux__) && (defined(__i386__) || defined(__x86_64__))
-extern __thread MONO_TLS_FAST void* GC_thread_tls;
+extern __thread void* GC_thread_tls;
 #include "metadata-internals.h"
 
 static int
@@ -899,6 +898,8 @@ create_allocator (int atype, int tls_key, gboolean slowpath)
 	MonoMethodSignature *csig;
 	const char *name = NULL;
 	WrapperInfo *info;
+
+	g_assert_not_reached ();
 
 	if (atype == ATYPE_FREEPTR) {
 		name = slowpath ? "SlowAllocPtrfree" : "AllocPtrfree";
@@ -1141,13 +1142,14 @@ mono_gc_is_critical_method (MonoMethod *method)
 MonoMethod*
 mono_gc_get_managed_allocator (MonoClass *klass, gboolean for_box, gboolean known_instance_size)
 {
-	int offset = -1;
 	int atype;
-	MONO_THREAD_VAR_OFFSET (GC_thread_tls, offset);
 
-	/*g_print ("thread tls: %d\n", offset);*/
-	if (offset == -1)
-		return NULL;
+	/*
+	 * Tls implementation changed, we jump to tls native getters/setters.
+	 * Is boehm managed allocator ok with this ? Do we even care ?
+	 */
+	return NULL;
+
 	if (!SMALL_ENOUGH (klass->instance_size))
 		return NULL;
 	if (mono_class_has_finalizer (klass) || mono_class_is_marshalbyref (klass))
@@ -1195,19 +1197,17 @@ mono_gc_get_managed_array_allocator (MonoClass *klass)
 MonoMethod*
 mono_gc_get_managed_allocator_by_type (int atype, ManagedAllocatorVariant variant)
 {
-	int offset = -1;
 	MonoMethod *res;
 	gboolean slowpath = variant != MANAGED_ALLOCATOR_REGULAR;
 	MonoMethod **cache = slowpath ? slowpath_alloc_method_cache : alloc_method_cache;
-	MONO_THREAD_VAR_OFFSET (GC_thread_tls, offset);
 
-	mono_tls_key_set_offset (TLS_KEY_BOEHM_GC_THREAD, offset);
+	return NULL;
 
 	res = cache [atype];
 	if (res)
 		return res;
 
-	res = create_allocator (atype, TLS_KEY_BOEHM_GC_THREAD, slowpath);
+	res = create_allocator (atype, -1, slowpath);
 	mono_os_mutex_lock (&mono_gc_lock);
 	if (cache [atype]) {
 		mono_free_method (res);
@@ -1706,19 +1706,19 @@ alloc_handle (HandleData *handles, MonoObject *obj, gboolean track)
 
 /**
  * mono_gchandle_new:
- * @obj: managed object to get a handle for
- * @pinned: whether the object should be pinned
+ * \param obj managed object to get a handle for
+ * \param pinned whether the object should be pinned
  *
  * This returns a handle that wraps the object, this is used to keep a
  * reference to a managed object from the unmanaged world and preventing the
  * object from being disposed.
  * 
- * If @pinned is false the address of the object can not be obtained, if it is
+ * If \p pinned is false the address of the object can not be obtained, if it is
  * true the address of the object can be obtained.  This will also pin the
  * object so it will not be possible by a moving garbage collector to move the
  * object. 
  * 
- * Returns: a handle that can be used to access the object from
+ * \returns a handle that can be used to access the object from
  * unmanaged code.
  */
 guint32
@@ -1729,23 +1729,23 @@ mono_gchandle_new (MonoObject *obj, gboolean pinned)
 
 /**
  * mono_gchandle_new_weakref:
- * @obj: managed object to get a handle for
- * @track_resurrection: Determines how long to track the object, if this is set to TRUE, the object is tracked after finalization, if FALSE, the object is only tracked up until the point of finalization.
+ * \param obj managed object to get a handle for
+ * \param track_resurrection Determines how long to track the object, if this is set to TRUE, the object is tracked after finalization, if FALSE, the object is only tracked up until the point of finalization.
  *
  * This returns a weak handle that wraps the object, this is used to
  * keep a reference to a managed object from the unmanaged world.
- * Unlike the mono_gchandle_new the object can be reclaimed by the
+ * Unlike the \c mono_gchandle_new the object can be reclaimed by the
  * garbage collector.  In this case the value of the GCHandle will be
  * set to zero.
  * 
- * If @track_resurrection is TRUE the object will be tracked through
+ * If \p track_resurrection is TRUE the object will be tracked through
  * finalization and if the object is resurrected during the execution
  * of the finalizer, then the returned weakref will continue to hold
- * a reference to the object.   If @track_resurrection is FALSE, then
+ * a reference to the object.   If \p track_resurrection is FALSE, then
  * the weak reference's target will become NULL as soon as the object
  * is passed on to the finalizer.
  * 
- * Returns: a handle that can be used to access the object from
+ * \returns a handle that can be used to access the object from
  * unmanaged code.
  */
 guint32
@@ -1756,12 +1756,12 @@ mono_gchandle_new_weakref (MonoObject *obj, gboolean track_resurrection)
 
 /**
  * mono_gchandle_get_target:
- * @gchandle: a GCHandle's handle.
+ * \param gchandle a GCHandle's handle.
  *
- * The handle was previously created by calling `mono_gchandle_new` or
- * `mono_gchandle_new_weakref`.
+ * The handle was previously created by calling \c mono_gchandle_new or
+ * \c mono_gchandle_new_weakref.
  *
- * Returns: A pointer to the `MonoObject*` represented by the handle or
+ * \returns A pointer to the \c MonoObject* represented by the handle or
  * NULL for a collected object if using a weakref handle.
  */
 MonoObject*
@@ -1826,13 +1826,13 @@ mono_gc_is_null (void)
 
 /**
  * mono_gchandle_is_in_domain:
- * @gchandle: a GCHandle's handle.
- * @domain: An application domain.
+ * \param gchandle a GCHandle's handle.
+ * \param domain An application domain.
  *
- * Use this function to determine if the @gchandle points to an
- * object allocated in the specified @domain.
+ * Use this function to determine if the \p gchandle points to an
+ * object allocated in the specified \p domain.
  *
- * Returns: TRUE if the object wrapped by the @gchandle belongs to the specific @domain.
+ * \returns TRUE if the object wrapped by the \p gchandle belongs to the specific \p domain.
  */
 gboolean
 mono_gchandle_is_in_domain (guint32 gchandle, MonoDomain *domain)
@@ -1866,9 +1866,9 @@ mono_gchandle_is_in_domain (guint32 gchandle, MonoDomain *domain)
 
 /**
  * mono_gchandle_free:
- * @gchandle: a GCHandle's handle.
+ * \param gchandle a GCHandle's handle.
  *
- * Frees the @gchandle handle.  If there are no outstanding
+ * Frees the \p gchandle handle.  If there are no outstanding
  * references, the garbage collector can reclaim the memory of the
  * object wrapped. 
  */
@@ -1903,7 +1903,7 @@ mono_gchandle_free (guint32 gchandle)
 
 /**
  * mono_gchandle_free_domain:
- * @domain: domain that is unloading
+ * \param domain domain that is unloading
  *
  * Function used internally to cleanup any GC handle for objects belonging
  * to the specified domain during appdomain unload.

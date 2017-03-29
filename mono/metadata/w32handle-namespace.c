@@ -1,5 +1,6 @@
-/*
- * w32handle-namespace.c: namespace for w32handles
+/**
+ * \file
+ * namespace for w32handles
  *
  * Author:
  *	Ludovic Henry (luhenry@microsoft.com)
@@ -16,7 +17,6 @@
 #include "w32mutex.h"
 #include "w32semaphore.h"
 #include "w32event.h"
-#include "mono/io-layer/io-layer.h"
 #include "mono/utils/mono-logger-internals.h"
 #include "mono/utils/mono-coop-mutex.h"
 

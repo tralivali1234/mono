@@ -1,3 +1,6 @@
+/**
+ * \file
+ */
 
 #ifndef __MONO_METADATA_INTERNALS_H__
 #define __MONO_METADATA_INTERNALS_H__
@@ -212,6 +215,9 @@ struct _MonoImage {
 	/* Whenever this image contains metadata only without PE data */
 	guint8 metadata_only : 1;
 
+	/*  Whether this image belongs to load-from context */
+	guint8 load_from_context: 1;
+
 	guint8 checked_module_cctor : 1;
 	guint8 has_module_cctor : 1;
 
@@ -247,6 +253,10 @@ struct _MonoImage {
 	MonoStreamHeader     heap_pdb;
 			    
 	const char          *tables_base;
+
+	/* For PPDB files */
+	guint64 referenced_tables;
+	int *referenced_table_rows;
 
 	/**/
 	MonoTableInfo        tables [MONO_TABLE_NUM];
@@ -775,6 +785,9 @@ MonoGenericInst *
 mono_metadata_get_generic_inst              (int 		    type_argc,
 					     MonoType 		  **type_argv);
 
+MonoGenericInst *
+mono_metadata_get_canonical_generic_inst    (MonoGenericInst *candidate);
+
 MonoGenericClass *
 mono_metadata_lookup_generic_class          (MonoClass		   *gclass,
 					     MonoGenericInst	   *inst,
@@ -810,6 +823,10 @@ mono_assembly_name_parse_full 		     (const char	   *name,
 					      gboolean save_public_key,
 					      gboolean *is_version_defined,
 						  gboolean *is_token_defined);
+
+gboolean
+mono_assembly_fill_assembly_name_full (MonoImage *image, MonoAssemblyName *aname, gboolean copyBlobs);
+
 
 MONO_API guint32 mono_metadata_get_generic_param_row (MonoImage *image, guint32 token, guint32 *owner);
 
@@ -919,6 +936,12 @@ mono_find_image_set_owner (void *ptr);
 
 void
 mono_loader_register_module (const char *name, MonoDl *module);
+
+gboolean
+mono_assembly_is_problematic_version (const char *name, guint16 major, guint16 minor, guint16 build, guint16 revision);
+
+void
+mono_ginst_get_desc (GString *str, MonoGenericInst *ginst);
 
 #endif /* __MONO_METADATA_INTERNALS_H__ */
 
