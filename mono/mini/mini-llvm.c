@@ -4985,6 +4985,8 @@ process_bb (EmitContext *ctx, MonoBasicBlock *bb)
 		case OP_X86_LEA: {
 			LLVMValueRef v1, v2;
 
+			rhs = LLVMBuildSExt (builder, convert (ctx, rhs, LLVMInt32Type ()), LLVMInt64Type (), "");
+
 			v1 = LLVMBuildMul (builder, convert (ctx, rhs, IntPtrType ()), LLVMConstInt (IntPtrType (), (1 << ins->backend.shift_amount), FALSE), "");
 			v2 = LLVMBuildAdd (builder, convert (ctx, lhs, IntPtrType ()), v1, "");
 			values [ins->dreg] = LLVMBuildAdd (builder, v2, LLVMConstInt (IntPtrType (), ins->inst_imm, FALSE), dname);
@@ -6930,13 +6932,16 @@ emit_method_inner (EmitContext *ctx)
 		static int count = 0;
 		count ++;
 
-		if (g_getenv ("LLVM_COUNT")) {
-			if (count == atoi (g_getenv ("LLVM_COUNT"))) {
+		char *llvm_count_str = g_getenv ("LLVM_COUNT");
+		if (llvm_count_str) {
+			int lcount = atoi (llvm_count_str);
+			g_free (llvm_count_str);
+			if (count == lcount) {
 				printf ("LAST: %s\n", mono_method_full_name (cfg->method, TRUE));
 				fflush (stdout);
 				last = TRUE;
 			}
-			if (count > atoi (g_getenv ("LLVM_COUNT"))) {
+			if (count > lcount) {
 				set_failure (ctx, "count");
 				return;
 			}
@@ -7714,6 +7719,7 @@ decode_llvm_eh_info (EmitContext *ctx, gpointer eh_frame)
 	guint32 ei_len, i, nested_len;
 	gpointer *type_info;
 	gint32 *table;
+	guint8 *unw_info;
 
 	/*
 	 * Decode the one element EH table emitted by the MonoException class
@@ -7746,9 +7752,16 @@ decode_llvm_eh_info (EmitContext *ctx, gpointer eh_frame)
 	fde = (guint8*)eh_frame + fde_offset;
 	cie = (guint8*)table;
 
-	mono_unwind_decode_llvm_mono_fde (fde, fde_len, cie, cfg->native_code, &info);
+	/* Compute lengths */
+	mono_unwind_decode_llvm_mono_fde (fde, fde_len, cie, cfg->native_code, &info, NULL, NULL, NULL);
 
-	cfg->encoded_unwind_ops = info.unw_info;
+	ei = (MonoJitExceptionInfo *)g_malloc0 (info.ex_info_len * sizeof (MonoJitExceptionInfo));
+	type_info = (gpointer *)g_malloc0 (info.ex_info_len * sizeof (gpointer));
+	unw_info = (guint8*)g_malloc0 (info.unw_info_len);
+
+	mono_unwind_decode_llvm_mono_fde (fde, fde_len, cie, cfg->native_code, &info, ei, type_info, unw_info);
+
+	cfg->encoded_unwind_ops = unw_info;
 	cfg->encoded_unwind_ops_len = info.unw_info_len;
 	if (cfg->verbose_level > 1)
 		mono_print_unwind_info (cfg->encoded_unwind_ops, cfg->encoded_unwind_ops_len);
@@ -7757,9 +7770,7 @@ decode_llvm_eh_info (EmitContext *ctx, gpointer eh_frame)
 		cfg->llvm_this_offset = info.this_offset;
 	}
 
-	ei = info.ex_info;
 	ei_len = info.ex_info_len;
-	type_info = info.type_info;
 
 	// Nested clauses are currently disabled
 	nested_len = 0;

@@ -515,6 +515,8 @@ namespace System.Net {
                 return data;
 
             return new WebProxy (true);
+#elif ORBIS
+            return new WebProxy (true);
 #else
             if (Platform.IsMacOS) {
                 var data = Mono.Net.CFNetwork.GetDefaultProxy ();

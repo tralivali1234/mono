@@ -199,6 +199,7 @@ mono_gc_base_init (void)
 					log_finalizers = 1;
 				}
 			}
+			g_free (env);
 		}
 	}
 
@@ -242,6 +243,7 @@ mono_gc_base_init (void)
 				*/
 			}
 		}
+		g_free (env);
 		g_strfreev (opts);
 	}
 
@@ -1320,18 +1322,23 @@ mono_gc_is_moving (void)
 gboolean
 mono_gc_is_disabled (void)
 {
-	if (GC_dont_gc || g_getenv ("GC_DONT_GC"))
+	if (GC_dont_gc || g_hasenv ("GC_DONT_GC"))
 		return TRUE;
 	else
 		return FALSE;
 }
 
 void
-mono_gc_wbarrier_value_copy_bitmap (gpointer _dest, gpointer _src, int size, unsigned bitmap)
+mono_gc_wbarrier_range_copy (gpointer _dest, gpointer _src, int size)
 {
 	g_assert_not_reached ();
 }
 
+void*
+mono_gc_get_range_copy_func (void)
+{
+	return &mono_gc_wbarrier_range_copy;
+}
 
 guint8*
 mono_gc_get_card_table (int *shift_bits, gpointer *card_mask)

@@ -3114,7 +3114,7 @@ mini_method_compile (MonoMethod *method, guint32 opts, MonoDomain *domain, JitFl
 	gboolean llvm = (flags & JIT_FLAG_LLVM) ? 1 : 0;
 #endif
 	static gboolean verbose_method_inited;
-	static const char *verbose_method_name;
+	static char *verbose_method_name;
 
 	InterlockedIncrement (&mono_jit_stats.methods_compiled);
 	if (mono_profiler_get_events () & MONO_PROFILE_JIT_COMPILATION)

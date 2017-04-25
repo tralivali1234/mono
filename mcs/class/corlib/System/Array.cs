@@ -40,9 +40,6 @@ using System.Runtime.InteropServices;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Runtime.ConstrainedExecution;
-#if !FULL_AOT_RUNTIME
-using System.Reflection.Emit;
-#endif
 
 namespace System
 {
@@ -114,45 +111,9 @@ namespace System
 			return false;
 		}
 
-		int IList.IndexOf (object value)
+		internal void InternalArray__ICollection_CopyTo<T> (T[] array, int arrayIndex)
 		{
-			if (this.Rank > 1)
-				throw new RankException (Locale.GetText ("Only single dimension arrays are supported."));
-
-			int length = this.Length;
-			for (int i = 0; i < length; i++) {
-				if (Object.Equals (this.GetValueImpl (i), value))
-					// array index may not be zero-based.
-					// use lower bound
-					return i + this.GetLowerBound (0);
-			}
-
-			unchecked {
-				// lower bound may be MinValue
-				return this.GetLowerBound (0) - 1;
-			}
-		}
-
-		internal void InternalArray__ICollection_CopyTo<T> (T[] array, int index)
-		{
-			if (array == null)
-				throw new ArgumentNullException ("array");
-
-			// The order of these exception checks may look strange,
-			// but that's how the microsoft runtime does it.
-			if (this.Rank > 1)
-				throw new RankException (Locale.GetText ("Only single dimension arrays are supported."));
-			if (index + this.GetLength (0) > array.GetLowerBound (0) + array.GetLength (0))
-				throw new ArgumentException ("Destination array was not long " +
-					"enough. Check destIndex and length, and the array's " +
-					"lower bounds.");
-			if (array.Rank > 1)
-				throw new RankException (Locale.GetText ("Only single dimension arrays are supported."));
-			if (index < 0)
-				throw new ArgumentOutOfRangeException (
-					"index", Locale.GetText ("Value has to be >= 0."));
-
-			Copy (this, this.GetLowerBound (0), array, index, this.GetLength (0));
+			Copy (this, GetLowerBound (0), array, arrayIndex, Length);
 		}
 
 		internal T InternalArray__IReadOnlyList_get_Item<T> (int index)
@@ -342,12 +303,6 @@ namespace System
 		[MethodImplAttribute (MethodImplOptions.InternalCall)]
 		internal extern static Array CreateInstanceImpl (Type elementType, int[] lengths, int[] bounds);
 
-		public bool IsReadOnly {
-			get {
-				return false;
-			}
-		}
-
 		[ReliabilityContractAttribute (Consistency.WillNotCorruptState, Cer.Success)]
 		public int GetUpperBound (int dimension)
 		{
@@ -357,12 +312,17 @@ namespace System
 		public object GetValue (int index)
 		{
 			if (Rank != 1)
-				throw new ArgumentException (Locale.GetText ("Array was not a one-dimensional array."));
-			if (index < GetLowerBound (0) || index > GetUpperBound (0))
+				throw new ArgumentException (SR.Arg_RankMultiDimNotSupported);
+
+			var lb  = GetLowerBound (0);
+			if (index < lb || index > GetUpperBound (0))
 				throw new IndexOutOfRangeException (Locale.GetText (
 					"Index has to be between upper and lower bound of the array."));
 
-			return GetValueImpl (index - GetLowerBound (0));
+			if (GetType ().GetElementType ().IsPointer)
+				throw new NotSupportedException ("Type is not supported");
+
+			return GetValueImpl (index - lb);
 		}
 
 		public object GetValue (int index1, int index2)
@@ -377,59 +337,20 @@ namespace System
 			return GetValue (ind);
 		}
 
-		[ComVisible (false)]
-		public void SetValue (object value, long index)
-		{
-			if (index < 0 || index > Int32.MaxValue)
-				throw new ArgumentOutOfRangeException ("index", Locale.GetText (
-					"Value must be >= 0 and <= Int32.MaxValue."));
-
-			SetValue (value, (int) index);
-		}
-
-		[ComVisible (false)]
-		public void SetValue (object value, long index1, long index2)
-		{
-			if (index1 < 0 || index1 > Int32.MaxValue)
-				throw new ArgumentOutOfRangeException ("index1", Locale.GetText (
-					"Value must be >= 0 and <= Int32.MaxValue."));
-
-			if (index2 < 0 || index2 > Int32.MaxValue)
-				throw new ArgumentOutOfRangeException ("index2", Locale.GetText (
-					"Value must be >= 0 and <= Int32.MaxValue."));
-
-			int[] ind = {(int) index1, (int) index2};
-			SetValue (value, ind);
-		}
-
-		[ComVisible (false)]
-		public void SetValue (object value, long index1, long index2, long index3)
-		{
-			if (index1 < 0 || index1 > Int32.MaxValue)
-				throw new ArgumentOutOfRangeException ("index1", Locale.GetText (
-					"Value must be >= 0 and <= Int32.MaxValue."));
-
-			if (index2 < 0 || index2 > Int32.MaxValue)
-				throw new ArgumentOutOfRangeException ("index2", Locale.GetText (
-					"Value must be >= 0 and <= Int32.MaxValue."));
-
-			if (index3 < 0 || index3 > Int32.MaxValue)
-				throw new ArgumentOutOfRangeException ("index3", Locale.GetText (
-					"Value must be >= 0 and <= Int32.MaxValue."));
-
-			int[] ind = {(int) index1, (int) index2, (int) index3};
-			SetValue (value, ind);
-		}
-
 		public void SetValue (object value, int index)
 		{
 			if (Rank != 1)
-				throw new ArgumentException (Locale.GetText ("Array was not a one-dimensional array."));
-			if (index < GetLowerBound (0) || index > GetUpperBound (0))
+				throw new ArgumentException (SR.Arg_RankMultiDimNotSupported);
+
+			var lb  = GetLowerBound (0);
+			if (index < lb || index > GetUpperBound (0))
 				throw new IndexOutOfRangeException (Locale.GetText (
 					"Index has to be >= lower bound and <= upper bound of the array."));
 
-			SetValueImpl (value, index - GetLowerBound (0));
+			if (GetType ().GetElementType ().IsPointer)
+				throw new NotSupportedException ("Type is not supported");
+
+			SetValueImpl (value, index - lb);
 		}
 
 		public void SetValue (object value, int index1, int index2)
@@ -499,10 +420,6 @@ namespace System
 				throw new NotSupportedException ("Array type can not be void");
 			if (elementType.ContainsGenericParameters)
 				throw new NotSupportedException ("Array type can not be an open generic type");
-#if !FULL_AOT_RUNTIME
-			if ((elementType is TypeBuilder) && !(elementType as TypeBuilder).IsCreated ())
-				throw new NotSupportedException ("Can't create an array of the unfinished type '" + elementType + "'.");
-#endif
 			
 			return CreateInstanceImpl (elementType, lengths, bounds);
 		}
@@ -543,36 +460,6 @@ namespace System
 				throw new TypeLoadException ();
 
 			return CreateInstanceImpl (elementType, lengths, lowerBounds);
-		}
-
-		static int [] GetIntArray (long [] values)
-		{
-			int len = values.Length;
-			int [] ints = new int [len];
-			for (int i = 0; i < len; i++) {
-				long current = values [i];
-				if (current < 0 || current > (long) Int32.MaxValue)
-					throw new ArgumentOutOfRangeException ("values", Locale.GetText (
-						"Each value has to be >= 0 and <= Int32.MaxValue."));
-
-				ints [i] = (int) current;
-			}
-			return ints;
-		}
-
-		public static Array CreateInstance (Type elementType, params long [] lengths)
-		{
-			if (lengths == null)
-				throw new ArgumentNullException ("lengths");
-			return CreateInstance (elementType, GetIntArray (lengths));
-		}
-
-		[ComVisible (false)]
-		public void SetValue (object value, params long [] indices)
-		{
-			if (indices == null)
-				throw new ArgumentNullException ("indices");
-			SetValue (value, GetIntArray (indices));
 		}
 
 		[ReliabilityContractAttribute (Consistency.WillNotCorruptState, Cer.Success)]
@@ -712,24 +599,6 @@ namespace System
 			return source.IsAssignableFrom (target) || target.IsAssignableFrom (source);
 		}
 
-		public static T [] FindAll<T> (T [] array, Predicate <T> match)
-		{
-			if (array == null)
-				throw new ArgumentNullException ("array");
-
-			if (match == null)
-				throw new ArgumentNullException ("match");
-
-			int pos = 0;
-			T [] d = new T [array.Length];
-			foreach (T t in array)
-				if (match (t))
-					d [pos++] = t;
-
-			Resize <T> (ref d, pos);
-			return d;
-		}
-
 		[ReliabilityContractAttribute (Consistency.WillNotCorruptState, Cer.Success)]
 		//
 		// The constrained copy should guarantee that if there is an exception thrown
@@ -740,9 +609,40 @@ namespace System
 			Copy (sourceArray, sourceIndex, destinationArray, destinationIndex, length);
 		}
 
-		object GetValueWithFlattenedIndex_NoErrorCheck (int flattenedIndex)
+		public static T[] Empty<T>()
 		{
-			return GetValueImpl (flattenedIndex);
+			return EmptyArray<T>.Value;
+		}
+
+		public void Initialize()
+		{
+			return;
+		}
+
+		static int IndexOfImpl<T>(T[] array, T value, int startIndex, int count)
+		{
+			return EqualityComparer<T>.Default.IndexOf (array, value, startIndex, count);
+		}
+
+		static int LastIndexOfImpl<T>(T[] array, T value, int startIndex, int count)
+		{
+			return EqualityComparer<T>.Default.LastIndexOf (array, value, startIndex, count);
+		}
+
+		static void SortImpl (Array keys, Array items, int index, int length, IComparer comparer)
+		{
+			Object[] objKeys = keys as Object[];
+			Object[] objItems = null;
+			if (objKeys != null)
+				objItems = items as Object[];
+
+			if (objKeys != null && (items == null || objItems != null)) {
+				SorterObjectArray sorter = new SorterObjectArray(objKeys, objItems, comparer);
+				sorter.Sort(index, length);
+			} else {
+				SorterGenericArray sorter = new SorterGenericArray(keys, items, comparer);
+				sorter.Sort(index, length);
+			}
 		}
 
 		#region Unsafe array operations
@@ -792,6 +692,18 @@ namespace System
 
 			public int Compare(T x, T y) {
 				return comparison(x, y);
+			}
+		}
+
+		partial class ArrayEnumerator
+		{
+			public Object Current {
+				get {
+					if (_index < 0) throw new InvalidOperationException (SR.InvalidOperation_EnumNotStarted);
+					if (_index >= _endIndex) throw new InvalidOperationException (SR.InvalidOperation_EnumEnded);
+					if (_index == 0 && _array.GetType ().GetElementType ().IsPointer) throw new NotSupportedException ("Type is not supported");
+					return _array.GetValueImpl(_index);
+				}
 			}
 		}
 	}

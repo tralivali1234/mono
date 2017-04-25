@@ -1261,16 +1261,22 @@ mono_get_got_var (MonoCompile *cfg)
 	return cfg->got_var;
 }
 
-static MonoInst *
-mono_get_vtable_var (MonoCompile *cfg)
+static void
+mono_create_rgctx_var (MonoCompile *cfg)
 {
-	g_assert (cfg->gshared);
-
 	if (!cfg->rgctx_var) {
 		cfg->rgctx_var = mono_compile_create_var (cfg, &mono_defaults.int_class->byval_arg, OP_LOCAL);
 		/* force the var to be stack allocated */
 		cfg->rgctx_var->flags |= MONO_INST_VOLATILE;
 	}
+}
+
+static MonoInst *
+mono_get_vtable_var (MonoCompile *cfg)
+{
+	g_assert (cfg->gshared);
+
+	mono_create_rgctx_var (cfg);
 
 	return cfg->rgctx_var;
 }
@@ -3002,10 +3008,17 @@ emit_write_barrier (MonoCompile *cfg, MonoInst *ptr, MonoInst *value)
 		wbarrier->sreg1 = ptr->dreg;
 		wbarrier->sreg2 = value->dreg;
 		MONO_ADD_INS (cfg->cbb, wbarrier);
-	} else if (card_table && !cfg->compile_aot && !mono_gc_card_table_nursery_check ()) {
+	} else if (card_table) {
 		int offset_reg = alloc_preg (cfg);
 		int card_reg;
 		MonoInst *ins;
+
+		/*
+		 * We emit a fast light weight write barrier. This always marks cards as in the concurrent
+		 * collector case, so, for the serial collector, it might slightly slow down nursery
+		 * collections. We also expect that the host system and the target system have the same card
+		 * table configuration, which is the case if they have the same pointer size.
+		 */
 
 		MONO_EMIT_NEW_BIALU_IMM (cfg, OP_SHR_UN_IMM, offset_reg, ptr->dreg, card_table_shift_bits);
 		if (card_table_mask)
@@ -3040,23 +3053,10 @@ mono_emit_wb_aware_memcpy (MonoCompile *cfg, MonoClass *klass, MonoInst *iargs[4
 	if (align < SIZEOF_VOID_P)
 		return FALSE;
 
-	/*This value cannot be bigger than 32 due to the way we calculate the required wb bitmap.*/
-	if (size > 32 * SIZEOF_VOID_P)
+	if (size > 5 * SIZEOF_VOID_P)
 		return FALSE;
 
 	create_write_barrier_bitmap (cfg, klass, &need_wb, 0);
-
-	/* We don't unroll more than 5 stores to avoid code bloat. */
-	if (size > 5 * SIZEOF_VOID_P) {
-		/*This is harmless and simplify mono_gc_wbarrier_value_copy_bitmap */
-		size += (SIZEOF_VOID_P - 1);
-		size &= ~(SIZEOF_VOID_P - 1);
-
-		EMIT_NEW_ICONST (cfg, iargs [2], size);
-		EMIT_NEW_ICONST (cfg, iargs [3], need_wb);
-		mono_emit_jit_icall (cfg, mono_gc_wbarrier_value_copy_bitmap, iargs);
-		return TRUE;
-	}
 
 	destreg = iargs [0]->dreg;
 	srcreg = iargs [1]->dreg;
@@ -3151,6 +3151,8 @@ mini_emit_stobj (MonoCompile *cfg, MonoInst *dest, MonoInst *src, MonoClass *kla
 	else
 		n = mono_class_value_size (klass, &align);
 
+	if (!align)
+		align = SIZEOF_VOID_P;
 	/* if native is true there should be no references in the struct */
 	if (cfg->gen_write_barriers && (klass->has_references || size_ins) && !native) {
 		/* Avoid barriers when storing to the stack */
@@ -3166,19 +3168,27 @@ mini_emit_stobj (MonoCompile *cfg, MonoInst *dest, MonoInst *src, MonoClass *kla
 			/* It's ok to intrinsify under gsharing since shared code types are layout stable. */
 			if (!size_ins && (cfg->opt & MONO_OPT_INTRINS) && mono_emit_wb_aware_memcpy (cfg, klass, iargs, n, align)) {
 				return;
-			} else if (context_used) {
-				iargs [2] = mini_emit_get_rgctx_klass (cfg, context_used, klass, MONO_RGCTX_INFO_KLASS);
-			}  else {
-				iargs [2] = emit_runtime_constant (cfg, MONO_PATCH_INFO_CLASS, klass);
-				if (!cfg->compile_aot)
-					mono_class_compute_gc_descriptor (klass);
-			}
+			} else if (size_ins || align < SIZEOF_VOID_P) {
+				if (context_used) {
+					iargs [2] = mini_emit_get_rgctx_klass (cfg, context_used, klass, MONO_RGCTX_INFO_KLASS);
+				}  else {
+					iargs [2] = emit_runtime_constant (cfg, MONO_PATCH_INFO_CLASS, klass);
+					if (!cfg->compile_aot)
+						mono_class_compute_gc_descriptor (klass);
+				}
+				if (size_ins)
+					mono_emit_jit_icall (cfg, mono_gsharedvt_value_copy, iargs);
+				else
+					mono_emit_jit_icall (cfg, mono_value_copy, iargs);
+			} else {
+				/* We don't unroll more than 5 stores to avoid code bloat. */
+				/*This is harmless and simplify mono_gc_get_range_copy_func */
+				n += (SIZEOF_VOID_P - 1);
+				n &= ~(SIZEOF_VOID_P - 1);
 
-			if (size_ins)
-				mono_emit_jit_icall (cfg, mono_gsharedvt_value_copy, iargs);
-			else
-				mono_emit_jit_icall (cfg, mono_value_copy, iargs);
-			return;
+				EMIT_NEW_ICONST (cfg, iargs [2], n);
+				mono_emit_jit_icall (cfg, mono_gc_get_range_copy_func (), iargs);
+			}
 		}
 	}
 
@@ -3280,6 +3290,16 @@ emit_get_rgctx (MonoCompile *cfg, MonoMethod *method, int context_used)
 
 		mrgctx_loc = mono_get_vtable_var (cfg);
 		EMIT_NEW_TEMPLOAD (cfg, mrgctx_var, mrgctx_loc->inst_c0);
+
+		return mrgctx_var;
+	} else if (MONO_CLASS_IS_INTERFACE (cfg->method->klass)) {
+		MonoInst *mrgctx_loc, *mrgctx_var;
+
+		/* Default interface methods need an mrgctx since the vtabke at runtime points at an implementing class */
+		mrgctx_loc = mono_get_vtable_var (cfg);
+		EMIT_NEW_TEMPLOAD (cfg, mrgctx_var, mrgctx_loc->inst_c0);
+
+		g_assert (mono_method_needs_static_rgctx_invoke (cfg->method, TRUE));
 
 		return mrgctx_var;
 	} else if (method->flags & METHOD_ATTRIBUTE_STATIC || method->klass->valuetype) {
@@ -4579,9 +4599,11 @@ mono_method_check_inlining (MonoCompile *cfg, MonoMethod *method)
 	/* also consider num_locals? */
 	/* Do the size check early to avoid creating vtables */
 	if (!inline_limit_inited) {
-		if (g_getenv ("MONO_INLINELIMIT"))
-			inline_limit = atoi (g_getenv ("MONO_INLINELIMIT"));
-		else
+		char *inlinelimit;
+		if ((inlinelimit = g_getenv ("MONO_INLINELIMIT"))) {
+			inline_limit = atoi (inlinelimit);
+			g_free (inlinelimit);
+		} else
 			inline_limit = INLINE_LENGTH_LIMIT;
 		inline_limit_inited = TRUE;
 	}
@@ -4715,7 +4737,11 @@ mini_emit_ldelema_1_ins (MonoCompile *cfg, MonoClass *klass, MonoInst *arr, Mono
 #if SIZEOF_REGISTER == 8
 	/* The array reg is 64 bits but the index reg is only 32 */
 	if (COMPILE_LLVM (cfg)) {
-		/* Not needed */
+		/*
+		 * abcrem can't handle the OP_SEXT_I4, so add this after abcrem,
+		 * during OP_BOUNDS_CHECK decomposition, and in the implementation
+		 * of OP_X86_LEA for llvm.
+		 */
 		index2_reg = index_reg;
 	} else {
 		index2_reg = alloc_preg (cfg);
@@ -11184,6 +11210,8 @@ mono_method_to_ir (MonoCompile *cfg, MonoMethod *method, MonoBasicBlock *start_b
 
 			klass = mini_get_class (method, token, generic_context);
 			CHECK_TYPELOAD (klass);
+			if (klass->byval_arg.type == MONO_TYPE_VOID)
+				UNVERIFIED;
 
 			context_used = mini_class_check_context_used (cfg, klass);
 
@@ -12338,6 +12366,21 @@ mono_method_to_ir (MonoCompile *cfg, MonoMethod *method, MonoBasicBlock *start_b
 				MONO_INST_NEW (cfg, ins, OP_GET_LAST_ERROR);
 				ins->dreg = alloc_dreg (cfg, STACK_I4);
 				ins->type = STACK_I4;
+				MONO_ADD_INS (cfg->cbb, ins);
+
+				ip += 2;
+				*sp++ = ins;
+				break;
+			case CEE_MONO_GET_RGCTX_ARG:
+				CHECK_OPSIZE (2);
+				CHECK_STACK_OVF (1);
+
+				mono_create_rgctx_var (cfg);
+
+				MONO_INST_NEW (cfg, ins, OP_MOVE);
+				ins->dreg = alloc_dreg (cfg, STACK_PTR);
+				ins->sreg1 = cfg->rgctx_var->dreg;
+				ins->type = STACK_PTR;
 				MONO_ADD_INS (cfg->cbb, ins);
 
 				ip += 2;
