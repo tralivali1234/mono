@@ -1543,6 +1543,9 @@ namespace Mono.CSharp {
 					if (ec is PointerContainer)
 						return PointerContainer.MakeType (context.Module, et);
 
+					if (ec is ReferenceContainer)
+						return ReferenceContainer.MakeType (context.Module, et);
+					
 					throw new NotImplementedException ();
 				}
 
@@ -1772,7 +1775,10 @@ namespace Mono.CSharp {
 			foreach (var arg in targs) {
 				if (arg.HasDynamicElement || arg.BuiltinType == BuiltinTypeSpec.Type.Dynamic) {
 					state |= StateFlags.HasDynamicElement;
-					break;
+				}
+
+				if (arg.HasNamedTupleElement) {
+					state |= StateFlags.HasNamedTupleElement;
 				}
 			}
 
@@ -1849,6 +1855,12 @@ namespace Mono.CSharp {
 		public override bool IsNullableType {
 			get {
 				return (open_type.state & StateFlags.InflatedNullableType) != 0;
+			}
+		}
+
+		public override bool IsTupleType {
+			get {
+				return (open_type.state & StateFlags.Tuple) != 0;
 			}
 		}
 
@@ -3091,7 +3103,11 @@ namespace Mono.CSharp {
 			// Some types cannot be used as type arguments
 			//
 			if ((bound.Type.Kind == MemberKind.Void && !voidAllowed) || bound.Type.IsPointer || bound.Type.IsSpecialRuntimeType ||
-				bound.Type == InternalType.MethodGroup || bound.Type == InternalType.AnonymousMethod || bound.Type == InternalType.VarOutType)
+			    bound.Type == InternalType.MethodGroup || bound.Type == InternalType.AnonymousMethod || bound.Type == InternalType.VarOutType ||
+			    bound.Type == InternalType.ThrowExpr)
+				return;
+
+			if (bound.Type.IsTupleType && TupleLiteral.ContainsNoTypeElement (bound.Type))
 				return;
 
 			var a = bounds [index];

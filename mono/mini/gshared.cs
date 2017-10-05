@@ -1823,10 +1823,29 @@ public class Tests
 		}
 	}
 
+	struct StructTest : IFaceTest {
+
+		int i;
+
+		public StructTest (int arg) {
+			i = arg;
+		}
+
+		public int iface_method () {
+			return i;
+		}
+	}
+
 	// Test constrained calls on an interface made from gsharedvt methods
 	public static int test_42_gsharedvt_constrained_iface () {
 		IFaceConstrainedIFace obj = new ConstrainedIFace ();
 		IFaceTest t = new ClassTest ();
+		return obj.foo<IFaceTest, int> (ref t);
+	}
+
+	public static int test_42_gsharedvt_constrained_iface_vtype () {
+		IFaceConstrainedIFace obj = new ConstrainedIFace ();
+		IFaceTest t = new StructTest (42);
 		return obj.foo<IFaceTest, int> (ref t);
 	}
 
@@ -1970,6 +1989,32 @@ public class Tests
 
 	static int test_0_gsharedvt_vphi_volatile () {
 		gsharedvt_vphi (0);
+		return 0;
+	}
+
+	struct AStruct3<T1, T2, T3> {
+		T1 t1;
+		T2 t2;
+		T3 t3;
+	}
+
+	interface IFaceIsRef {
+		bool is_ref<T> ();
+	}
+
+	class ClassIsRef : IFaceIsRef {
+		[MethodImplAttribute (MethodImplOptions.NoInlining)]
+		public bool is_ref<T> () {
+			return RuntimeHelpers.IsReferenceOrContainsReferences<T> ();
+		}
+	}
+
+	public static int test_0_isreference_intrins () {
+		IFaceIsRef iface = new ClassIsRef ();
+		if (iface.is_ref<AStruct3<int, int, int>> ())
+			return 1;
+		if (!iface.is_ref<AStruct3<string, int, int>> ())
+			return 2;
 		return 0;
 	}
 }

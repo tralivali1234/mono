@@ -160,10 +160,6 @@ typedef struct MonoCompileArch {
   #define MONO_ARCH_HAVE_DECOMPOSE_VTYPE_OPTS 1
   #define MONO_ARCH_RETURN_CAN_USE_MULTIPLE_REGISTERS 1
 
-// FIXME: To get the test case  finally_block_ending_in_dead_bb  to work properly define the following
-// and then implement the fuction mono_arch_create_handler_block_trampoline.
-//  #define MONO_ARCH_HAVE_HANDLER_BLOCK_GUARD 1
-
 // Define "DEBUG_ELFABIV2" to allow for debugging output for ELF ABI v2 function call and return codegen
 //  #define DEBUG_ELFABIV2
 
@@ -236,6 +232,7 @@ typedef struct MonoCompileArch {
 #define MONO_ARCH_SOFT_DEBUG_SUPPORTED 1
 #endif
 #define MONO_ARCH_HAVE_OP_TAIL_CALL 1
+#define MONO_ARCH_HAVE_INIT_LMF_EXT 1
 
 #define PPC_NUM_REG_ARGS (PPC_LAST_ARG_REG-PPC_FIRST_ARG_REG+1)
 #define PPC_NUM_REG_FPARGS (PPC_LAST_FPARG_REG-PPC_FIRST_FPARG_REG+1)

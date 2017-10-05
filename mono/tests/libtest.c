@@ -1356,7 +1356,10 @@ mono_test_return_empty_struct (int a)
 
 	memset (&s, 0, sizeof (s));
 
+#if !(defined(__i386__) && defined(__clang__))
+	/* https://bugzilla.xamarin.com/show_bug.cgi?id=58901 */
 	g_assert (a == 42);
+#endif
 
 	return s;
 }
@@ -3337,6 +3340,7 @@ typedef struct
 	int (STDCALL *DoubleIn)(MonoComObject* pUnk, double a);
 	int (STDCALL *ITestIn)(MonoComObject* pUnk, MonoComObject* pUnk2);
 	int (STDCALL *ITestOut)(MonoComObject* pUnk, MonoComObject* *ppUnk);
+	int (STDCALL *Return22NoICall)(MonoComObject* pUnk);
 } MonoIUnknown;
 
 struct MonoComObject
@@ -3453,6 +3457,13 @@ ITestOut(MonoComObject* pUnk, MonoComObject* *ppUnk)
 	return S_OK;
 }
 
+LIBTEST_API int STDCALL
+Return22NoICall(MonoComObject* pUnk)
+{
+	return 22;
+}
+
+
 static void create_com_object (MonoComObject** pOut);
 
 LIBTEST_API int STDCALL 
@@ -3484,6 +3495,7 @@ static void create_com_object (MonoComObject** pOut)
 	(*pOut)->vtbl->ITestIn = ITestIn;
 	(*pOut)->vtbl->ITestOut = ITestOut;
 	(*pOut)->vtbl->get_ITest = get_ITest;
+	(*pOut)->vtbl->Return22NoICall = Return22NoICall;
 }
 
 static MonoComObject* same_object = NULL;
@@ -3568,6 +3580,28 @@ mono_test_marshal_ccw_itest (MonoComObject *pUnk)
 	hr = pUnk->vtbl->ITestOut (pUnk, &pTest);
 	if (hr != 0)
 		return 13;
+
+	return 0;
+}
+
+// Xamarin-47560
+LIBTEST_API int STDCALL
+mono_test_marshal_array_ccw_itest (int count, MonoComObject ** ppUnk)
+{
+	int hr = 0;
+
+	if (!ppUnk)
+		return 1;
+
+	if (count < 1)
+		return 2;
+
+	if (!ppUnk[0])
+		return 3;
+
+	hr = ppUnk[0]->vtbl->SByteIn (ppUnk[0], -100);
+	if (hr != 0)
+		return 4;
 
 	return 0;
 }
@@ -7451,3 +7485,23 @@ mono_test_marshal_pointer_array (int *arr[])
 	}
 	return 0;
 }
+
+#ifndef WIN32
+
+typedef void (*NativeToManagedExceptionRethrowFunc) (void);
+
+void *mono_test_native_to_managed_exception_rethrow_thread (void *arg)
+{
+	NativeToManagedExceptionRethrowFunc func = (NativeToManagedExceptionRethrowFunc) arg;
+	func ();
+	return NULL;
+}
+
+LIBTEST_API void STDCALL
+mono_test_native_to_managed_exception_rethrow (NativeToManagedExceptionRethrowFunc func)
+{
+	pthread_t t;
+	pthread_create (&t, NULL, mono_test_native_to_managed_exception_rethrow_thread, func);
+	pthread_join (t, NULL);
+}
+#endif

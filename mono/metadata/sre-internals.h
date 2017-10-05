@@ -8,6 +8,15 @@
 
 #include <mono/metadata/object-internals.h>
 
+/* Keep in sync with System.Reflection.Emit.AssemblyBuilderAccess */
+enum MonoAssemblyBuilderAccess {
+	MonoAssemblyBuilderAccess_Run = 1,                /* 0b0001 */
+	MonoAssemblyBuilderAccess_Save = 2,               /* 0b0010 */
+	MonoAssemblyBuilderAccess_RunAndSave = 3,         /* Run | Save */
+	MonoAssemblyBuilderAccess_ReflectionOnly = 6,     /* Refonly | Save */
+	MonoAssemblyBuilderAccess_RunAndCollect = 9,      /* Collect | Run */
+};
+
 typedef struct _ArrayMethod ArrayMethod;
 
 typedef struct {
@@ -140,6 +149,9 @@ mono_dynimage_save_encode_marshal_blob (MonoDynamicImage *assembly, MonoReflecti
 
 guint32
 mono_dynimage_save_encode_property_signature (MonoDynamicImage *assembly, MonoReflectionPropertyBuilder *fb, MonoError *error);
+
+guint32
+mono_image_get_methodref_token (MonoDynamicImage *assembly, MonoMethod *method, gboolean create_typespec);
 
 #endif  /* __MONO_METADATA_SRE_INTERNALS_H__ */
 

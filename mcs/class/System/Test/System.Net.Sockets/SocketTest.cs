@@ -30,9 +30,7 @@ namespace MonoTests.System.Net.Sockets
 	[TestFixture]
 	public class SocketTest
 	{
-		// note: also used in SocketCas tests
 		public const string BogusAddress = "192.168.244.244";
-		public const int BogusPort = 23483;
 
 		[Test]
 #if FEATURE_NO_BSD_SOCKETS
@@ -87,14 +85,14 @@ namespace MonoTests.System.Net.Sockets
 		}
 
 		[Test]
-		[Category ("InetAccess")]
+		[Category ("NotWorking")]
 #if FEATURE_NO_BSD_SOCKETS
 		[ExpectedException (typeof (PlatformNotSupportedException))]
 #endif
 		public void BogusEndConnect ()
 		{
 			IPAddress ipOne = IPAddress.Parse (BogusAddress);
-			IPEndPoint ipEP = new IPEndPoint (ipOne, BogusPort);
+			IPEndPoint ipEP = new IPEndPoint (ipOne, NetworkHelpers.FindFreePort ());
 			Socket sock = new Socket (ipEP.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
 			IAsyncResult ar = sock.BeginConnect (ipEP, null, null);
 
@@ -501,8 +499,7 @@ namespace MonoTests.System.Net.Sockets
 			Socket sock = new Socket (AddressFamily.InterNetwork,
 						  SocketType.Stream,
 						  ProtocolType.Tcp);
-			IPEndPoint ep = new IPEndPoint (IPAddress.Loopback,
-							BogusPort);
+			IPEndPoint ep = NetworkHelpers.LocalEphemeralEndPoint ();
 			
 			SocketError_event.Reset ();
 
@@ -745,8 +742,7 @@ namespace MonoTests.System.Net.Sockets
 			Socket sock = new Socket (AddressFamily.InterNetwork,
 						  SocketType.Stream,
 						  ProtocolType.Tcp);
-			IPEndPoint ep = new IPEndPoint (IPAddress.Loopback,
-							BogusPort);
+			IPEndPoint ep = NetworkHelpers.LocalEphemeralEndPoint ();
 			
 			Assert.AreEqual (false, sock.IsBound, "IsBoundTcp #1");
 			
@@ -780,8 +776,7 @@ namespace MonoTests.System.Net.Sockets
 			Socket sock = new Socket (AddressFamily.InterNetwork,
 						  SocketType.Dgram,
 						  ProtocolType.Udp);
-			IPEndPoint ep = new IPEndPoint (IPAddress.Loopback,
-							BogusPort);
+			IPEndPoint ep = NetworkHelpers.LocalEphemeralEndPoint ();
 			
 			Assert.AreEqual (false, sock.IsBound, "IsBoundUdp #1");
 			
@@ -1739,13 +1734,14 @@ namespace MonoTests.System.Net.Sockets
 		[Test]
 		public void BeginConnectAddressPortNull ()
 		{
+			var port = NetworkHelpers.FindFreePort ();
 			Socket sock = new Socket (AddressFamily.InterNetwork,
 						  SocketType.Stream,
 						  ProtocolType.Tcp);
 			IPAddress ip = null;
 
 			try {
-				sock.BeginConnect (ip, 1244, BCCallback,
+				sock.BeginConnect (ip, port, BCCallback,
 						   sock);
 				Assert.Fail ("BeginConnectAddressPortNull #1");
 			} catch (ArgumentNullException) {
@@ -1782,6 +1778,7 @@ namespace MonoTests.System.Net.Sockets
 		[ExpectedException (typeof(ObjectDisposedException))]
 		public void BeginConnectAddressPortClosed ()
 		{
+			var port = NetworkHelpers.FindFreePort ();
 			Socket sock = new Socket (AddressFamily.InterNetwork,
 						  SocketType.Stream,
 						  ProtocolType.Tcp);
@@ -1789,7 +1786,7 @@ namespace MonoTests.System.Net.Sockets
 			
 			sock.Close ();
 			
-			sock.BeginConnect (ip, 1244, BCCallback, sock);
+			sock.BeginConnect (ip, port, BCCallback, sock);
 		}
 		
 		[Test]
@@ -1911,13 +1908,14 @@ namespace MonoTests.System.Net.Sockets
 		[Test]
 		public void BeginConnectMultipleNull ()
 		{
+			var port = NetworkHelpers.FindFreePort ();
 			Socket sock = new Socket (AddressFamily.InterNetwork,
 						  SocketType.Stream,
 						  ProtocolType.Tcp);
 			IPAddress[] ips = null;
 			
 			try {
-				sock.BeginConnect (ips, 1246, BCCallback,
+				sock.BeginConnect (ips, port, BCCallback,
 						   sock);
 				Assert.Fail ("BeginConnectMultipleNull #1");
 			} catch (ArgumentNullException) {
@@ -1961,6 +1959,7 @@ namespace MonoTests.System.Net.Sockets
 		[ExpectedException (typeof(ObjectDisposedException))]
 		public void BeginConnectMultipleClosed ()
 		{
+			var port = NetworkHelpers.FindFreePort ();
 			Socket sock = new Socket (AddressFamily.InterNetwork,
 						  SocketType.Stream,
 						  ProtocolType.Tcp);
@@ -1973,7 +1972,7 @@ namespace MonoTests.System.Net.Sockets
 			
 			sock.Close ();
 			
-			sock.BeginConnect (ips, 1247, BCCallback, sock);
+			sock.BeginConnect (ips, port, BCCallback, sock);
 		}
 		
 		[Test]
@@ -2248,13 +2247,14 @@ namespace MonoTests.System.Net.Sockets
 		[Test]
 		public void ConnectAddressPortNull ()
 		{
+			var port = NetworkHelpers.FindFreePort ();
 			Socket sock = new Socket (AddressFamily.InterNetwork,
 						  SocketType.Stream,
 						  ProtocolType.Tcp);
 			IPAddress ip = null;
 
 			try {
-				sock.Connect (ip, 1249);
+				sock.Connect (ip, port);
 				Assert.Fail ("ConnectAddressPortNull #1");
 			} catch (ArgumentNullException) {
 			} finally {
@@ -2290,6 +2290,7 @@ namespace MonoTests.System.Net.Sockets
 		[ExpectedException (typeof(ObjectDisposedException))]
 		public void ConnectAddressPortClosed ()
 		{
+			var port = NetworkHelpers.FindFreePort ();
 			Socket sock = new Socket (AddressFamily.InterNetwork,
 						  SocketType.Stream,
 						  ProtocolType.Tcp);
@@ -2297,7 +2298,7 @@ namespace MonoTests.System.Net.Sockets
 			
 			sock.Close ();
 			
-			sock.Connect (ip, 1250);
+			sock.Connect (ip, port);
 		}
 		
 		[Test]
@@ -2397,13 +2398,14 @@ namespace MonoTests.System.Net.Sockets
 		[Test]
 		public void ConnectMultipleNull ()
 		{
+			var port = NetworkHelpers.FindFreePort ();
 			Socket sock = new Socket (AddressFamily.InterNetwork,
 						  SocketType.Stream,
 						  ProtocolType.Tcp);
 			IPAddress[] ips = null;
 			
 			try {
-				sock.Connect (ips, 1251);
+				sock.Connect (ips, port);
 				Assert.Fail ("ConnectMultipleNull #1");
 			} catch (ArgumentNullException) {
 			} finally {
@@ -2445,6 +2447,7 @@ namespace MonoTests.System.Net.Sockets
 		[ExpectedException (typeof(ObjectDisposedException))]
 		public void ConnectMultipleClosed ()
 		{
+			var port = NetworkHelpers.FindFreePort ();
 			Socket sock = new Socket (AddressFamily.InterNetwork,
 						  SocketType.Stream,
 						  ProtocolType.Tcp);
@@ -2457,7 +2460,7 @@ namespace MonoTests.System.Net.Sockets
 			
 			sock.Close ();
 			
-			sock.Connect (ips, 1252);
+			sock.Connect (ips, port);
 		}
 		
 		[Test]
@@ -3718,30 +3721,84 @@ namespace MonoTests.System.Net.Sockets
 			}
 		}
 
+		// Test case for https://bugzilla.novell.com/show_bug.cgi?id=443346
+		// See also https://bugzilla.xamarin.com/show_bug.cgi?id=52157
 		[Test]
-		[Category ("NotOnMac")]
-#if FULL_AOT_DESKTOP
-		[Ignore ("https://bugzilla.xamarin.com/show_bug.cgi?id=52157")]
-#endif
 		public void ConnectedProperty ()
 		{
-			TcpListener listener = new TcpListener (IPAddress.Loopback, NetworkHelpers.FindFreePort ());
+			var port = NetworkHelpers.FindFreePort ();
+			var listener = new TcpListener (IPAddress.Loopback, port);
 			listener.Start();
 
-			Socket client = new Socket (AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-			client.Connect (IPAddress.Loopback, ((IPEndPoint)listener.LocalEndpoint).Port);
-			Socket server = listener.AcceptSocket ();
+			var client = new Socket (AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+			client.Connect (IPAddress.Loopback, port);
+			var server = listener.AcceptSocket ();
 
-			try {
-				server.EndSend(server.BeginSend (new byte[10], 0, 10, SocketFlags.None, null, null));
+			const int blobSize = 2048;
+
+			// Small send/recv buffers so that our send operation will fill them
+			server.ReceiveBufferSize = server.SendBufferSize = 256;
+			client.ReceiveBufferSize = client.SendBufferSize = 256;
+
+			// Setting this linger state causes shutdown to be a hard close (RST if send data is pending)
+			server.LingerState = client.LingerState = new LingerOption (true, 0);
+
+			// KeepAlive being set introduces another opportunity for a RST according to some documentation
+			server.SetSocketOption (SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+			client.SetSocketOption (SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+
+			try 
+			{
+				// Fill the send buffer
+				client.Send (new byte[blobSize]);
+				// Now shut down the socket. Because of the linger state this will hard close and send RST.
+				client.Shutdown (SocketShutdown.Both);
 				client.Close ();
-				try {
-					server.EndReceive (server.BeginReceive (new byte[10], 0, 10, SocketFlags.None, null, null));
-				} catch {
+
+				Assert.IsFalse (client.Connected);
+				Assert.IsTrue (server.Connected);
+
+				var isDead = false;
+
+				try 
+				{
+					// On Windows this BeginSend succeeds... it really shouldn't and a sync send fails.
+					// On Linux this fails with a ConnectionReset.
+					var ar = server.BeginSend (new byte[blobSize], 0, blobSize, SocketFlags.None, null, null);
+					// On Mac we get an erroneous WSAESHUTDOWN (10058) here
+					server.EndSend (ar);
+				} 
+				catch (SocketException se) 
+				{
+					isDead = true;
+
+					if (
+						(se.SocketErrorCode != SocketError.ConnectionReset) &&
+						(se.SocketErrorCode != SocketError.Shutdown)
+					)
+						throw;
+				} 
+
+				if (!isDead) 
+				{
+					try 
+					{
+						// On Windows this second send operation will fail with a ConnectionReset.
+						var ar = server.BeginSend (new byte[blobSize], 0, blobSize, SocketFlags.None, null, null);
+						server.EndSend (ar);
+					} 
+					catch (SocketException se) 
+					{
+						if (se.SocketErrorCode != SocketError.ConnectionReset)
+							throw;
+					} 
 				}
-				Assert.IsTrue (!client.Connected);
-				Assert.IsTrue (!server.Connected);
-			} finally {
+
+				Assert.IsFalse (client.Connected);
+				Assert.IsFalse (server.Connected);
+			} 
+			finally 
+			{
 				listener.Stop ();
 				client.Close ();
 				server.Close ();
@@ -4247,7 +4304,7 @@ namespace MonoTests.System.Net.Sockets
 				IPv6MulticastOption option = new IPv6MulticastOption (
 					IPAddress.Parse ("ff02::1"));
 
-				s.Bind (new IPEndPoint (IPAddress.IPv6Any, 1902));
+				s.Bind (new IPEndPoint (IPAddress.IPv6Any, 0));
 				s.SetSocketOption (SocketOptionLevel.IPv6, SocketOptionName.AddMembership,
 					option);
 				s.SetSocketOption (SocketOptionLevel.IPv6, SocketOptionName.DropMembership,
@@ -4497,6 +4554,7 @@ namespace MonoTests.System.Net.Sockets
 #if FEATURE_NO_BSD_SOCKETS
 		[ExpectedException (typeof (PlatformNotSupportedException))]
 #endif
+		[Ignore ("https://bugzilla.xamarin.com/show_bug.cgi?id=43172")]
 		public void SendAsyncFile ()
 		{
 			Socket serverSocket = new Socket (AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);

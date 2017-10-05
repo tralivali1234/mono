@@ -1,14 +1,14 @@
 class FsharpPackage(GitHubTarballPackage):
-
     def __init__(self):
         GitHubTarballPackage.__init__(self,
-                                      'fsharp', 'fsharp',
-                                      '4.0.1.20',
-                                      '9bd7c2420e06c1597ef5a37b6cb6e0f8d2911b10',
-                                      configure='./configure --prefix="%{package_prefix}"')
+            'fsharp', 'fsharp',
+            '4.1.25',
+            '9687f27c3e6be7b9e1646bb9ee1ae0b02080daae',
+            configure='./configure --prefix="%{package_prefix}"',
+            override_properties={ 'make': 'make' })
 
-        self.extra_stage_files = [
-            'lib/mono/xbuild/Microsoft/VisualStudio/v/FSharp/Microsoft.FSharp.Targets']
+        self.extra_stage_files = ['lib/mono/xbuild/Microsoft/VisualStudio/v/FSharp/Microsoft.FSharp.Targets']
+        self.sources.extend(['patches/fsharp-portable-pdb.patch', 'patches/fsharp-metadata-table-size-fix.patch', 'patches/fsharp-install-netsdk-targets.patch'])
 
     def prep(self):
         Package.prep(self)

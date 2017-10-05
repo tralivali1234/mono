@@ -32,6 +32,7 @@
 #include <mono/metadata/marshal.h> /* for mono_delegate_free_ftnptr () */
 #include <mono/metadata/attach.h>
 #include <mono/metadata/console-io.h>
+#include <mono/metadata/w32process.h>
 #include <mono/utils/mono-os-semaphore.h>
 #include <mono/utils/mono-memory-model.h>
 #include <mono/utils/mono-counters.h>
@@ -43,6 +44,8 @@
 #include <mono/utils/mono-coop-semaphore.h>
 #include <mono/utils/hazard-pointer.h>
 #include <mono/utils/w32api.h>
+#include <mono/utils/unlocked.h>
+#include <mono/utils/mono-os-wait.h>
 
 #ifndef HOST_WIN32
 #include <pthread.h>
@@ -305,11 +308,11 @@ mono_gc_run_finalize (void *obj, void *data)
 	if (log_finalizers)
 		g_log ("mono-gc-finalizers", G_LOG_LEVEL_MESSAGE, "<%s at %p> Calling finalizer.", o->vtable->klass->name, o);
 
-	mono_profiler_gc_finalize_object_begin (o);
+	MONO_PROFILER_RAISE (gc_finalizing_object, (o));
 
 	runtime_invoke (o, NULL, &exc, NULL);
 
-	mono_profiler_gc_finalize_object_end (o);
+	MONO_PROFILER_RAISE (gc_finalized_object, (o));
 
 	if (log_finalizers)
 		g_log ("mono-gc-finalizers", G_LOG_LEVEL_MESSAGE, "<%s at %p> Returned from finalizer.", o->vtable->klass->name, o);
@@ -415,10 +418,6 @@ mono_domain_finalize (MonoDomain *domain, guint32 timeout)
 	gint res;
 	gboolean ret;
 	gint64 start;
-
-#if defined(__native_client__)
-	return FALSE;
-#endif
 
 	if (mono_thread_internal_current () == gc_thread)
 		/* We are called from inside a finalizer, not much we can do here */
@@ -600,7 +599,7 @@ ves_icall_System_GC_WaitForPendingFinalizers (void)
 	mono_gc_finalize_notify ();
 	/* g_print ("Waiting for pending finalizers....\n"); */
 	MONO_ENTER_GC_SAFE;
-	WaitForSingleObjectEx (pending_done_event, INFINITE, TRUE);
+	mono_win32_wait_for_single_object_ex (pending_done_event, INFINITE, TRUE);
 	MONO_EXIT_GC_SAFE;
 	/* g_print ("Done pending....\n"); */
 #else
@@ -711,6 +710,7 @@ static volatile gboolean finished;
  *
  *   Notify the finalizer thread that finalizers etc.
  * are available to be processed.
+ * This is async signal safe.
  */
 void
 mono_gc_finalize_notify (void)
@@ -782,7 +782,7 @@ finalize_domain_objects (void)
 	DomainFinalizationReq *req = NULL;
 	MonoDomain *domain;
 
-	if (domains_to_finalize) {
+	if (UnlockedReadPointer ((gpointer)&domains_to_finalize)) {
 		mono_finalizer_lock ();
 		if (domains_to_finalize) {
 			req = (DomainFinalizationReq *)domains_to_finalize->data;
@@ -845,7 +845,9 @@ finalizer_thread (gpointer unused)
 	MonoError error;
 	gboolean wait = TRUE;
 
-	mono_thread_set_name_internal (mono_thread_internal_current (), mono_string_new (mono_get_root_domain (), "Finalizer"), FALSE, FALSE, &error);
+	MonoString *finalizer = mono_string_new_checked (mono_get_root_domain (), "Finalizer", &error);
+	mono_error_assert_ok (&error);
+	mono_thread_set_name_internal (mono_thread_internal_current (), finalizer, FALSE, FALSE, &error);
 	mono_error_assert_ok (&error);
 
 	/* Register a hazard free queue pump callback */
@@ -875,18 +877,20 @@ finalizer_thread (gpointer unused)
 
 		finalize_domain_objects ();
 
-		mono_profiler_gc_finalize_begin ();
+		MONO_PROFILER_RAISE (gc_finalizing, ());
 
 		/* If finished == TRUE, mono_gc_cleanup has been called (from mono_runtime_cleanup),
 		 * before the domain is unloaded.
 		 */
 		mono_gc_invoke_finalizers ();
 
-		mono_profiler_gc_finalize_end ();
+		MONO_PROFILER_RAISE (gc_finalized, ());
 
 		mono_threads_join_threads ();
 
 		reference_queue_proccess_all ();
+
+		mono_w32process_signal_finished ();
 
 		hazard_free_queue_pump ();
 
@@ -931,11 +935,11 @@ mono_gc_init (void)
 	mono_coop_mutex_init_recursive (&finalizer_mutex);
 	mono_coop_mutex_init_recursive (&reference_queue_mutex);
 
-	mono_counters_register ("Minor GC collections", MONO_COUNTER_GC | MONO_COUNTER_UINT, &gc_stats.minor_gc_count);
-	mono_counters_register ("Major GC collections", MONO_COUNTER_GC | MONO_COUNTER_UINT, &gc_stats.major_gc_count);
+	mono_counters_register ("Minor GC collections", MONO_COUNTER_GC | MONO_COUNTER_INT, &gc_stats.minor_gc_count);
+	mono_counters_register ("Major GC collections", MONO_COUNTER_GC | MONO_COUNTER_INT, &gc_stats.major_gc_count);
 	mono_counters_register ("Minor GC time", MONO_COUNTER_GC | MONO_COUNTER_ULONG | MONO_COUNTER_TIME, &gc_stats.minor_gc_time);
-	mono_counters_register ("Major GC time", MONO_COUNTER_GC | MONO_COUNTER_ULONG | MONO_COUNTER_TIME, &gc_stats.major_gc_time);
-	mono_counters_register ("Major GC time concurrent", MONO_COUNTER_GC | MONO_COUNTER_ULONG | MONO_COUNTER_TIME, &gc_stats.major_gc_time_concurrent);
+	mono_counters_register ("Major GC time", MONO_COUNTER_GC | MONO_COUNTER_LONG | MONO_COUNTER_TIME, &gc_stats.major_gc_time);
+	mono_counters_register ("Major GC time concurrent", MONO_COUNTER_GC | MONO_COUNTER_LONG | MONO_COUNTER_TIME, &gc_stats.major_gc_time_concurrent);
 
 	mono_gc_base_init ();
 
@@ -993,7 +997,7 @@ mono_gc_cleanup (void)
 					ret = guarded_wait (gc_thread->handle, MONO_INFINITE_WAIT, FALSE);
 					g_assert (ret == MONO_THREAD_INFO_WAIT_RET_SUCCESS_0);
 
-					mono_thread_join (GUINT_TO_POINTER (gc_thread->tid));
+					mono_threads_add_joinable_thread ((gpointer)(MONO_UINT_TO_NATIVE_THREAD_ID (gc_thread->tid)));
 					break;
 				}
 
@@ -1006,7 +1010,7 @@ mono_gc_cleanup (void)
 					mono_gc_suspend_finalizers ();
 
 					/* Try to abort the thread, in the hope that it is running managed code */
-					mono_thread_internal_abort (gc_thread);
+					mono_thread_internal_abort (gc_thread, FALSE);
 
 					/* Wait for it to stop */
 					ret = guarded_wait (gc_thread->handle, 100, FALSE);
@@ -1018,7 +1022,7 @@ mono_gc_cleanup (void)
 
 					g_assert (ret == MONO_THREAD_INFO_WAIT_RET_SUCCESS_0);
 
-					mono_thread_join (GUINT_TO_POINTER (gc_thread->tid));
+					mono_threads_add_joinable_thread ((gpointer)(MONO_UINT_TO_NATIVE_THREAD_ID (gc_thread->tid)));
 					break;
 				}
 

@@ -143,7 +143,6 @@ mono_class_free_ref_info (MonoClass *klass)
 	}
 }
 
-
 /**
  * mono_custom_attrs_free:
  */
@@ -155,7 +154,6 @@ mono_custom_attrs_free (MonoCustomAttrInfo *ainfo)
 	if (ainfo && !ainfo->cached)
 		g_free (ainfo);
 }
-
 
 gboolean
 reflected_equal (gconstpointer a, gconstpointer b)
@@ -175,7 +173,6 @@ reflected_hash (gconstpointer a) {
 	return seed;
 }
 
-
 static void
 clear_cached_object (MonoDomain *domain, gpointer o, MonoClass *klass)
 {
@@ -186,35 +183,30 @@ clear_cached_object (MonoDomain *domain, gpointer o, MonoClass *klass)
 
 		pe.item = o;
 		pe.refclass = klass;
-		if (mono_g_hash_table_lookup_extended (domain->refobject_hash, &pe, &orig_pe, &orig_value)) {
-			mono_g_hash_table_remove (domain->refobject_hash, &pe);
-			FREE_REFENTRY (orig_pe);
+
+		if (mono_conc_g_hash_table_lookup_extended (domain->refobject_hash, &pe, &orig_pe, &orig_value)) {
+			mono_conc_g_hash_table_remove (domain->refobject_hash, &pe);
+			free_reflected_entry (orig_pe);
 		}
 	}
 	mono_domain_unlock (domain);
 }
 
-#ifdef REFENTRY_REQUIRES_CLEANUP
 static void
 cleanup_refobject_hash (gpointer key, gpointer value, gpointer user_data)
 {
-	FREE_REFENTRY (key);
+	free_reflected_entry (key);
 }
-#endif
 
 void
 mono_reflection_cleanup_domain (MonoDomain *domain)
 {
 	if (domain->refobject_hash) {
-/*let's avoid scanning the whole hashtable if not needed*/
-#ifdef REFENTRY_REQUIRES_CLEANUP
-		mono_g_hash_table_foreach (domain->refobject_hash, cleanup_refobject_hash, NULL);
-#endif
-		mono_g_hash_table_destroy (domain->refobject_hash);
+		mono_conc_g_hash_table_foreach (domain->refobject_hash, cleanup_refobject_hash, NULL);
+		mono_conc_g_hash_table_destroy (domain->refobject_hash);
 		domain->refobject_hash = NULL;
 	}
 }
-
 
 /**
  * mono_assembly_get_object:
@@ -1209,6 +1201,7 @@ mono_method_body_get_object (MonoDomain *domain, MonoMethod *method)
 	HANDLE_FUNCTION_RETURN_OBJ (result);
 }
 
+/* WARNING: This method can return NULL on sucess */
 static MonoReflectionMethodBodyHandle
 method_body_object_construct (MonoDomain *domain, MonoClass *unused_class, MonoMethod *method, gpointer user_data, MonoError *error)
 {
@@ -1888,10 +1881,12 @@ _mono_reflection_get_type_from_info (MonoTypeNameParse *info, MonoImage *image, 
 static MonoType*
 mono_reflection_get_type_internal (MonoImage *rootimage, MonoImage* image, MonoTypeNameParse *info, gboolean ignorecase, MonoError *error)
 {
+	HANDLE_FUNCTION_ENTER ();
 	MonoClass *klass;
 	GList *mod;
 	int modval;
 	gboolean bounded = FALSE;
+	MonoType* type = NULL;
 	
 	error_init (error);
 	if (!image)
@@ -1906,7 +1901,7 @@ mono_reflection_get_type_internal (MonoImage *rootimage, MonoImage* image, MonoT
 		klass = mono_class_from_name_checked (image, info->name_space, info->name, error);
 
 	if (!klass)
-		return NULL;
+		goto leave;
 
 	for (mod = info->nested; mod; mod = mod->next) {
 		gpointer iter = NULL;
@@ -1966,7 +1961,7 @@ mono_reflection_get_type_internal (MonoImage *rootimage, MonoImage* image, MonoT
 			break;
 	}
 	if (!klass)
-		return NULL;
+		goto leave;
 
 	if (info->type_arguments) {
 		MonoType **type_args = g_new0 (MonoType *, info->type_arguments->len);
@@ -1980,20 +1975,20 @@ mono_reflection_get_type_internal (MonoImage *rootimage, MonoImage* image, MonoT
 			type_args [i] = _mono_reflection_get_type_from_info (subinfo, rootimage, ignorecase, error);
 			if (!type_args [i]) {
 				g_free (type_args);
-				return NULL;
+				goto leave;
 			}
 		}
 
 		the_type = mono_type_get_object_handle (mono_domain_get (), &klass->byval_arg, error);
 		if (!is_ok (error) || MONO_HANDLE_IS_NULL (the_type))
-			return NULL;
+			goto leave;
 
 		instance = mono_reflection_bind_generic_parameters (
 			the_type, info->type_arguments->len, type_args, error);
 
 		g_free (type_args);
 		if (!instance)
-			return NULL;
+			goto leave;
 
 		klass = mono_class_from_mono_type (instance);
 	}
@@ -2001,7 +1996,8 @@ mono_reflection_get_type_internal (MonoImage *rootimage, MonoImage* image, MonoT
 	for (mod = info->modifiers; mod; mod = mod->next) {
 		modval = GPOINTER_TO_UINT (mod->data);
 		if (!modval) { /* byref: must be last modifier */
-			return &klass->this_arg;
+			type = &klass->this_arg;
+			goto leave;
 		} else if (modval == -1) {
 			klass = mono_ptr_class_get (&klass->byval_arg);
 		} else if (modval == -2) {
@@ -2011,7 +2007,10 @@ mono_reflection_get_type_internal (MonoImage *rootimage, MonoImage* image, MonoT
 		}
 	}
 
-	return &klass->byval_arg;
+	type = &klass->byval_arg;
+
+leave:
+	HANDLE_FUNCTION_RETURN_VAL (type);
 }
 
 /**

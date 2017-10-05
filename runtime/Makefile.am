@@ -33,7 +33,7 @@ net_profile = net_4_x
 endif
 
 if INSTALL_MONODROID
-build_profiles += monodroid
+build_profiles += monodroid monodroid_tools
 endif
 
 if INSTALL_MONOTOUCH
@@ -68,7 +68,11 @@ if INSTALL_ORBIS
 build_profiles += orbis
 endif
 
-test_profiles = $(build_profiles)
+if INSTALL_UNREAL
+build_profiles += unreal
+endif
+
+test_profiles = $(filter-out binary_reference_assemblies monodroid_tools,$(build_profiles))
 
 if BUILD_MCS
 
@@ -138,13 +142,10 @@ endif
 
 # Compile all assemblies with the verifier turned on. Code must be valid but not verifiable.
 # TODO it would be nice to split assemblies without unsafe code to use the verifier with verifiable mode.
-# Skip binary_reference_assemblies because they contain metadata only
 mcs-compileall: mono-wrapper etc/mono/config
 	save_MONO_PATH=$$MONO_PATH; mcs_topdir=`cd $(mcs_topdir) && $(cur_dir_cmd)`; ok=:; \
 	for profile in $(test_profiles); do \
-	  if [ "binary_reference_assemblies" = "$$profile" ]; then \
-          continue; \
-	  elif [ "xbuild_12" = "$$profile" ]; then \
+	  if [ "xbuild_12" = "$$profile" ]; then \
 		  MONO_PATH="$$mcs_topdir/class/lib/$$profile$(PLATFORM_PATH_SEPARATOR)$$mcs_topdir/class/lib/net_4_x$(PLATFORM_PATH_SEPARATOR)$$save_MONO_PATH"; \
 	  elif [ "xbuild_14" = "$$profile" ]; then \
 		  MONO_PATH="$$mcs_topdir/class/lib/$$profile$(PLATFORM_PATH_SEPARATOR)$$mcs_topdir/class/lib/net_4_x$(PLATFORM_PATH_SEPARATOR)$$save_MONO_PATH"; \
@@ -164,14 +165,11 @@ mcs-compileall: mono-wrapper etc/mono/config
 	    else \
 	      echo $$i verification failed; ok=false; \
 	    fi; done; done; \
+	if [ "$$ok" = "false" ]; then echo "<?xml version='1.0' encoding='utf-8'?><test-results failures='1' total='1' not-run='0' name='verify' date='$$(date +%F)' time='$$(date +%T)'><test-suite name='mcs-compileall' success='False' time='0'><results><test-case name='fail' executed='True' success='False' time='0'><failure><message>Verifying framework assemblies failed. Check the log for more details.</message><stack-trace></stack-trace></failure></test-case></results></test-suite></test-results>" > TestResult-verify.xml; fi; \
 	$$ok
 
-if NACL_CODEGEN
-check-local:
-else
 check-local: mcs-compileall mcs-do-test-profiles
 	$(MAKE) mcs-do-run-test-profiles
-endif
 
 # Compile all mcs tests
 test: mcs-do-test-profiles

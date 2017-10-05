@@ -50,6 +50,7 @@ RUN_STANDALONE += --test=$(TESTNAME)
 endif
 
 LIB_REFS = System System.Core System.Drawing System.Data System.Data.Linq System.Xml System.Web System.Web.Services System.Configuration System.EnterpriseServices System.ServiceModel
+KEYFILE = ../winfx.pub
 LIB_MCS_FLAGS = \
 	-unsafe \
 	-define:NET_3_5	-nowarn:436		\
@@ -86,7 +87,7 @@ $(STANDALONE_TEST_ASSEMBLY): $(the_assembly) Test/standalone-tests/Consts.cs
 	$(CSCOMPILE) $(STANDALONE_TEST_MCS_FLAGS) -out:$@ -target:library @System.Web.Extensions_standalone_test.dll.sources
 
 Test/standalone-tests/Consts.cs: Test/standalone-tests/Consts.cs.in
-ifeq ($(PLATFORM), win32)
+ifeq ($(BUILD_PLATFORM), win32)
 	@sed 's,@SystemWebExtensionsClassDir@,$(shell cygpath -a -m .),' $< > $@
 else
 	@sed 's,@SystemWebExtensionsClassDir@,$(shell pwd),' $< > $@

@@ -9,8 +9,11 @@
     <ProjectGuid>{2762E921-91A8-4C87-91E9-BA628013F753}</ProjectGuid>
     <OutputType>Library</OutputType>
     <NoWarn>1699,436</NoWarn>
-    <OutputPath>./../../class/lib/net_4_x</OutputPath>
-    <IntermediateOutputPath>obj-net_4_x</IntermediateOutputPath>
+    <HostPlatform Condition=" '$(HostPlatform)' == '' and '$(OS)' == 'Windows_NT'">win32</HostPlatform>
+    <HostPlatform Condition=" '$(HostPlatform)' == '' and '$(OS)' == 'Unix' and $([System.IO.File]::Exists('/usr/lib/libc.dylib'))">darwin</HostPlatform>
+    <HostPlatform Condition=" '$(HostPlatform)' == '' and '$(OS)' == 'Unix'">linux</HostPlatform>
+    <OutputPath>./../../class/lib/net_4_x-$(HostPlatform)</OutputPath>
+    <IntermediateOutputPath>obj-net_4_x-$(HostPlatform)</IntermediateOutputPath>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
     <NoStdLib>True</NoStdLib>
     
@@ -22,8 +25,8 @@
     <AssemblyName>System</AssemblyName>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
+
   </PropertyGroup>
-  
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
@@ -57,6 +60,7 @@
     <Compile Include="..\..\..\external\corefx\src\Common\src\System\Collections\Generic\LargeArrayBuilder.cs" />
     <Compile Include="..\..\..\external\corefx\src\Common\src\System\CSharpHelpers.cs" />
     <Compile Include="..\..\..\external\corefx\src\Common\src\System\IO\TempFileCollection.cs" />
+    <Compile Include="..\..\..\external\corefx\src\Common\src\System\Net\HttpStatusDescription.cs" />
     <Compile Include="..\..\..\external\corefx\src\Common\src\System\Net\Logging\NetEventSource.Common.cs" />
     <Compile Include="..\..\..\external\corefx\src\Common\src\System\Net\SecurityProtocol.cs" />
     <Compile Include="..\..\..\external\corefx\src\Common\src\System\Net\UriScheme.cs" />
@@ -841,6 +845,7 @@
     <Compile Include="Mono.Btls\MonoBtlsSsl.cs" />
     <Compile Include="Mono.Btls\MonoBtlsSslCtx.cs" />
     <Compile Include="Mono.Btls\MonoBtlsSslError.cs" />
+    <Compile Include="Mono.Btls\MonoBtlsSslRenegotiateMode.cs" />
     <Compile Include="Mono.Btls\MonoBtlsStream.cs" />
     <Compile Include="Mono.Btls\MonoBtlsUtils.cs" />
     <Compile Include="Mono.Btls\MonoBtlsX509.cs" />
@@ -893,16 +898,11 @@
     <Compile Include="Mono.Net.Security\AsyncProtocolRequest.cs" />
     <Compile Include="Mono.Net.Security\CallbackHelpers.cs" />
     <Compile Include="Mono.Net.Security\ChainValidationHelper.cs" />
-    <Compile Include="Mono.Net.Security\IMonoSslStream.cs" />
-    <Compile Include="Mono.Net.Security\IMonoTlsProvider.cs" />
     <Compile Include="Mono.Net.Security\LegacySslStream.cs" />
     <Compile Include="Mono.Net.Security\LegacyTlsProvider.cs" />
     <Compile Include="Mono.Net.Security\MobileAuthenticatedStream.cs" />
     <Compile Include="Mono.Net.Security\MobileTlsContext.cs" />
-    <Compile Include="Mono.Net.Security\MonoSslStreamImpl.cs" />
-    <Compile Include="Mono.Net.Security\MonoSslStreamWrapper.cs" />
     <Compile Include="Mono.Net.Security\MonoTlsProviderFactory.cs" />
-    <Compile Include="Mono.Net.Security\MonoTlsProviderWrapper.cs" />
     <Compile Include="Mono.Net.Security\MonoTlsStream.cs" />
     <Compile Include="Mono.Net.Security\NoReflectionHelper.cs" />
     <Compile Include="Mono.Net.Security\SystemCertificateValidator.cs" />
@@ -1186,7 +1186,6 @@
     <Compile Include="System.Net\BasicClient.cs" />
     <Compile Include="System.Net\BindIPEndPoint.cs" />
     <Compile Include="System.Net\ChunkedInputStream.cs" />
-    <Compile Include="System.Net\ChunkStream.cs" />
     <Compile Include="System.Net\DecompressionMethods.cs" />
     <Compile Include="System.Net\DefaultCertificatePolicy.cs" />
     <Compile Include="System.Net\DigestClient.cs" />
@@ -1205,12 +1204,12 @@
     <Compile Include="System.Net\FtpWebResponse.cs" />
     <Compile Include="System.Net\HttpConnection.cs" />
     <Compile Include="System.Net\HttpListener.cs" />
+    <Compile Include="System.Net\HttpListener.Mono.cs" />
     <Compile Include="System.Net\HttpListenerBasicIdentity.cs" />
     <Compile Include="System.Net\HttpListenerContext.cs" />
     <Compile Include="System.Net\HttpListenerPrefixCollection.cs" />
     <Compile Include="System.Net\HttpListenerRequest.cs" />
     <Compile Include="System.Net\HttpListenerResponse.cs" />
-    <Compile Include="System.Net\HttpListenerResponseHelper.cs" />
     <Compile Include="System.Net\HttpListenerTimeoutManager.cs" />
     <Compile Include="System.Net\HttpRequestCreator.cs" />
     <Compile Include="System.Net\HttpStreamAsyncResult.cs" />
@@ -1223,6 +1222,7 @@
     <Compile Include="System.Net\ListenerAsyncResult.cs" />
     <Compile Include="System.Net\ListenerPrefix.cs" />
     <Compile Include="System.Net\MacProxy.cs" />
+    <Compile Include="System.Net\MonoChunkStream.cs" />
     <Compile Include="System.Net\MonoHttpDate.cs" />
     <Compile Include="System.Net\NetConfig.cs" />
     <Compile Include="System.Net\NtlmClient.cs" />

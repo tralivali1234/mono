@@ -42,6 +42,8 @@
 #define CONFIG_OS "hpux"
 #elif defined(__HAIKU__)
 #define CONFIG_OS "haiku"
+#elif defined (TARGET_WASM)
+#define CONFIG_OS "wasm"
 #else
 #warning Unknown operating system
 #define CONFIG_OS "unknownOS"
@@ -79,11 +81,11 @@
 #elif defined(__aarch64__)
 #define CONFIG_CPU "armv8"
 #define CONFIG_WORDSIZE "64"
-#elif defined(__ia64__)
-#define CONFIG_CPU "ia64"
-#define CONFIG_WORDSIZE "64"
 #elif defined(mips) || defined(__mips) || defined(_mips)
 #define CONFIG_CPU "mips"
+#define CONFIG_WORDSIZE "32"
+#elif defined(TARGET_WASM)
+#define CONFIG_CPU "wasm"
 #define CONFIG_WORDSIZE "32"
 #else
 #error Unknown CPU
@@ -671,7 +673,7 @@ mono_config_parse (const char *filename) {
 	mono_config_parse_file (mono_cfg);
 	g_free (mono_cfg);
 
-#if !defined(TARGET_WIN32) && !defined(__native_client__)
+#if !defined(TARGET_WIN32)
 	home = g_get_home_dir ();
 	user_cfg = g_strconcat (home, G_DIR_SEPARATOR_S, ".mono/config", NULL);
 	mono_config_parse_file (user_cfg);
@@ -689,7 +691,7 @@ mono_set_config_dir (const char *dir)
 	/* If this environment variable is set, overrides the directory computed */
 	char *env_mono_cfg_dir = g_getenv ("MONO_CFG_DIR");
 	if (env_mono_cfg_dir == NULL && dir != NULL)
-		env_mono_cfg_dir = strdup (dir);
+		env_mono_cfg_dir = g_strdup (dir);
 
 	mono_cfg_dir = env_mono_cfg_dir;
 }

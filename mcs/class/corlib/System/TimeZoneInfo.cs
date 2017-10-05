@@ -152,7 +152,7 @@ namespace System
 #if !MONODROID && !MONOTOUCH && !XAMMAC
 		static TimeZoneInfo CreateLocal ()
 		{
-#if (!FULL_AOT_DESKTOP || WIN_PLATFORM) && !XAMMAC_4_5
+#if WIN_PLATFORM
 			if (IsWindows && LocalZoneKey != null) {
 				string name = (string)LocalZoneKey.GetValue ("TimeZoneKeyName");
 				if (name == null)
@@ -206,7 +206,7 @@ namespace System
 
 		static void GetSystemTimeZonesCore (List<TimeZoneInfo> systemTimeZones)
 		{
-#if (!FULL_AOT_DESKTOP || WIN_PLATFORM) && !XAMMAC_4_5
+#if WIN_PLATFORM
 			if (TimeZoneKey != null) {
 				foreach (string id in TimeZoneKey.GetSubKeyNames ()) {
 					try {
@@ -574,11 +574,17 @@ namespace System
 #if LIBC
 		private static TimeZoneInfo FindSystemTimeZoneByFileName (string id, string filepath)
 		{
-			if (!File.Exists (filepath))
-				throw new TimeZoneNotFoundException ();
-
-			using (FileStream stream = File.OpenRead (filepath)) {
+			FileStream stream = null;
+			try {
+				stream = File.OpenRead (filepath);	
+			} catch (Exception ex) {
+				throw new TimeZoneNotFoundException ("Couldn't read time zone file " + filepath, ex);
+			}
+			try {
 				return BuildFromStream (id, stream);
+			} finally {
+				if (stream != null)
+					stream.Dispose();
 			}
 		}
 #endif
@@ -618,7 +624,7 @@ namespace System
 			else
 				ParseRegTzi(adjustmentRules, 1, 9999, reg_tzi);
 
-			return CreateCustomTimeZone (id, baseUtcOffset, display_name, standard_name, daylight_name, ValidateRules (adjustmentRules).ToArray ());
+			return CreateCustomTimeZone (id, baseUtcOffset, display_name, standard_name, daylight_name, ValidateRules (adjustmentRules));
 		}
 
 		private static void ParseRegTzi (List<AdjustmentRule> adjustmentRules, int start_year, int end_year, byte [] buffer)
@@ -1225,8 +1231,11 @@ namespace System
 			return new DateTime (year, transition.Month, day) + transition.TimeOfDay.TimeOfDay;
 		}
 
-		static List<AdjustmentRule> ValidateRules (List<AdjustmentRule> adjustmentRules)
+		static AdjustmentRule[] ValidateRules (List<AdjustmentRule> adjustmentRules)
 		{
+			if (adjustmentRules == null || adjustmentRules.Count == 0)
+				return null;
+
 			AdjustmentRule prev = null;
 			foreach (AdjustmentRule current in adjustmentRules.ToArray ()) {
 				if (prev != null && prev.DateEnd > current.DateStart) {
@@ -1234,7 +1243,7 @@ namespace System
 				}
 				prev = current;
 			}
-			return adjustmentRules;
+			return adjustmentRules.ToArray ();
 		}
 
 #if LIBC || MONOTOUCH
@@ -1398,13 +1407,13 @@ namespace System
 				}
 				tz = CreateCustomTimeZone (id, baseUtcOffset, id, standardDisplayName);
 			} else {
-				tz = CreateCustomTimeZone (id, baseUtcOffset, id, standardDisplayName, daylightDisplayName, ValidateRules (adjustmentRules).ToArray ());
+				tz = CreateCustomTimeZone (id, baseUtcOffset, id, standardDisplayName, daylightDisplayName, ValidateRules (adjustmentRules));
 			}
 
 			if (storeTransition && transitions.Count > 0) {
 				tz.transitions = transitions;
-				tz.supportsDaylightSavingTime = true;
 			}
+			tz.supportsDaylightSavingTime = adjustmentRules.Count > 0;
 
 			return tz;
 		}
