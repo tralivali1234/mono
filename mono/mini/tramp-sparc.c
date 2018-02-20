@@ -72,8 +72,6 @@ mono_arch_patch_plt_entry (guint8 *code, gpointer *got, mgreg_t *regs, guint8 *a
 	g_assert_not_reached ();
 }
 
-#define ALIGN_TO(val,align) (((val) + ((align) - 1)) & ~((align) - 1))
-
 guchar*
 mono_arch_create_generic_trampoline (MonoTrampolineType tramp_type, MonoTrampInfo **info, gboolean aot)
 {
@@ -172,7 +170,7 @@ mono_arch_create_generic_trampoline (MonoTrampolineType tramp_type, MonoTrampInf
 	sparc_sti_imm (code, sparc_o0, sparc_sp, MONO_SPARC_STACK_BIAS + 304);
 
 	/* Check for thread interruption */
-	sparc_set (code, (guint8*)mono_interruption_checkpoint_from_trampoline, sparc_o7);
+	sparc_set (code, (guint8*)mono_interruption_checkpoint_from_trampoline_deprecated, sparc_o7);
 	sparc_jmpl (code, sparc_o7, sparc_g0, sparc_o7);
 	sparc_nop (code);
 

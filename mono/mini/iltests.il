@@ -6,6 +6,13 @@
 .assembly extern TestDriver {}
 .assembly extern mscorlib {}
 
+  .class private sequential ansi sealed beforefieldinit FLSharedKeys
+  extends [mscorlib]System.ValueType
+  {
+	 .pack 0
+	 .size 1
+  }
+
 .class public auto ansi sealed beforefieldinit Tests {
 
 	.method static public int32 Main(string[] args) il managed {
@@ -3102,4 +3109,31 @@ L_3:
 	ret
   }
 
+  .field public static class FLSharedKeys* keys
+
+  .method public hidebysig static int32 test_0_regress_60634 () cil managed
+  {
+	.maxstack 8
+	ldsflda     class FLSharedKeys* Tests::keys
+	initobj    class FLSharedKeys*
+	ldc.i4.0
+	ret
+  }
+
+  .method public hidebysig static int32 test_0_github_issue_6721 () cil managed
+  {
+       .maxstack 8
+       ldc.i4.0
+       conv.i8
+       ldc.i4.m1
+       conv.ovf.i8.un
+       sub.ovf
+       ldc.i8 0xffffffff00000001
+       beq.s IL_success
+       ldc.i4.1
+       ret
+       IL_success:
+       ldc.i4.0
+       ret
+  }
 }

@@ -111,10 +111,11 @@ directory.
 .SH OPTIONS
 .TP 
 .I "--config FILE"
-Specifies that a machine.config file must be bundled as well.
-Typically this is $prefix/etc/mono/1.0/machine.config or
-$prefix/etc/mono/2.0/machine.config depending on the profile that you
-are using (1.0 or 2.0)
+Specifies that a DLLMAP Mono config file must be bundled as well.   In
+the simple and cross compiler modes, if no config file is specified
+the one for the current target is picked (either the system one in the
+case of the simple mode, or the one that came from the cross
+compilation target for the cross compiling mode).
 .TP
 .I "--config-dir DIR"
 When passed, DIR will be set for the MONO_CFG_DIR environment variable
@@ -188,14 +189,44 @@ as precompiled binaries on the Mono distribution server.
 .I "--local-targets"
 Lists all of the available local cross compilation targets.
 .TP
+.I "--cil-strip PATH"
+Provides a CIL stripper that mkbundle will use if able to.
+The intended use is to help reduce file size on AOT.
+.TP
+.I "--in-tree path/to/mono/source/root"
+Provides mkbundle with a mono source repository from which to pull the necessary headers for compilation.
+This allows mkbundle to run out of the project's source tree, useful for working with multiple runtimes and for
+testing without installing.
+.TP
+.I "--managed-linker PATH"
+Provides mkbundle access to a managed linker to preprocess the assemblies.
+.TP
 .I "--machine-config FILE"
 Uses the given FILE as the machine.config file for the generated
-application.   
+application.  The machine config contains an XML file that is used by
+System.Configuration APIs to configure the .NET stack.  Typically this
+is
+.I $prefix/etc/mono/4.5/machine.config.
+.Sp
+If you want to disable this automatic bundling, you can use the
+.I "--no-machine-config"
+flag. In the simple and cross compiler modes, if no machine.config file is specified
+the one for the current target is picked (either the system one in the
+case of the simple mode, or the one that came from the cross
+compilation target for the cross compiling mode).
+.TP
+.I "--no-config"
+In simple or cross compiling mode, this prevents mkbundle from
+automatically bundling a config file.   
 .TP
 .I  "--nodeps"
 This is the default: \fImkbundle\fP will only include the assemblies that
 were specified on the command line to reduce the size of the resulting
 image created.
+.TP
+.I "--no-machine-config"
+In simple or cross compiling mode, this prevents mkbundle from
+automatically bundling a machine.config file.   
 .TP
 .I "-o filename"
 Places the output on `out'.  If the flag -c is specified, this is the
@@ -308,6 +339,25 @@ causes it to statically link instead.
 Compresses the assemblies before embedding. This results in smaller
 executable files, but increases startup time and requires zlib to be
 installed on the target system.
+
+.SH AOT Options
+These options support an mkbundle using AOT compilation with static linking. A native compiler
+toolchain is required.
+.TP
+.I "--aot-runtime PATH"
+Provide the path to the mono runtime to use for AOTing assemblies.
+.TP
+.I "--aot-dedup"
+(Experimental) Deduplicate AOT'ed methods based on a unique mangling of method names.
+.TP
+.I "--aot-mode MODE"
+MODE can be either "full" or "llvmonly" at this time.
+Currently, mkbundle supports three AOT modes. The default mode (this option unset)
+will AOT methods but will fall back on runtime codegen where it is much faster or offers
+a more full compatibility profile. The "full" setting will generate the necessary stubs to
+not require runtime code generation. The "llvmonly" setting does the same, but forces all codegen
+to go through the llvm backend.
+
 .SH WINDOWS
 If you are using the old embedding on Windows systems, it it necessary
 to have Unix-like toolchain to be installed for \fImkbundle\fP to

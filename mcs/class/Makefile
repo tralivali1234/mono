@@ -14,21 +14,28 @@ basic_SUBDIRS := \
 	Mono.Security \
 	System \
 	System.XML \
+	System.Security \
 	System.Core \
 	System.ComponentModel.Composition.4.5 \
 	System.Numerics \
 	System.Xml.Linq \
 	Mono.Cecil \
 	$(MCS_MODE_dirs) \
-	../tools/cil-stringreplacer
+	Mono.CompilerServices.SymbolWriter	\
+	PEAPI \
+	../tools/cil-stringreplacer \
+	../ilasm \
+	corlib/il
 
 build_SUBDIRS :=  \
 	corlib \
 	Mono.Security \
 	System \
 	System.XML \
+	System.Security \
 	Mono.Posix \
 	System.Core \
+	System.Configuration \
 	System.ComponentModel.Composition.4.5 \
 	System.Numerics \
 	System.Xml.Linq \
@@ -53,8 +60,8 @@ mobile_common_dirs := \
 	Mono.Security \
 	System	\
 	System.Core	\
-	System.Security	\
 	System.XML	\
+	System.Security	\
 	I18N		\
 	System.ServiceModel.Internals	\
 	System.Runtime.Serialization	\
@@ -82,7 +89,8 @@ mobile_common_dirs := \
 	Mono.CSharp	\
 	Microsoft.CSharp \
 	System.Reflection.Context	\
-	System.Net.Http.WinHttpHandler
+	System.Net.Http.WinHttpHandler \
+	System.Runtime.CompilerServices.Unsafe
 
 testing_aot_full_dirs := \
 	$(mobile_common_dirs)	\
@@ -140,14 +148,20 @@ unreal_dirs := \
 	System.Drawing			\
 	$(pcl_facade_dirs)
 
+wasm_dirs := \
+	$(mobile_common_dirs)	\
+	System.Drawing			\
+	$(pcl_facade_dirs)
+
 xammac_4_5_dirs := \
 	corlib	\
 	Mono.Security \
 	System	\
-	Mono.Posix			\
-	System.Core	\
+	System.XML			\
 	System.Security			\
-	System.XML	\
+	Mono.Posix	\
+	System.Core	\
+	System.Configuration	\
 	I18N		\
 	System.ServiceModel.Internals	\
 	SMDiagnostics	\
@@ -186,6 +200,7 @@ xammac_4_5_dirs := \
 	System.Net.Http.WebRequest \
 	System.Reflection.Context	\
 	System.Net.Http.WinHttpHandler	\
+	System.Runtime.CompilerServices.Unsafe \
 	$(pcl_facade_dirs)
 
 net_4_x_dirs := \
@@ -193,10 +208,10 @@ net_4_x_dirs := \
 	Mono.Security \
 	System				\
 	System.XML			\
+	System.Security			\
 	Mono.CompilerServices.SymbolWriter \
 	Mono.Posix			\
 	System.Core			\
-	System.Security			\
 	System.Configuration	\
 	System.Drawing			\
 	System.IO.Compression 		\
@@ -216,9 +231,9 @@ net_4_x_dirs := \
 	System.Web.ApplicationServices	\
 	Novell.Directory.Ldap		\
 	System.DirectoryServices	\
-	System.Web			\
-	System.Web.Services		\
 	System.Design			\
+	System.Web.Services		\
+	System.Web			\
 	System.Runtime.Remoting		\
 	System.Configuration.Install 	\
 	System.Management		\
@@ -326,6 +341,8 @@ net_4_x_parallel_dirs := \
 	System.Workflow.Runtime \
 	System.Reflection.Context \
 	Mono.Profiler.Log	\
+	Mono.Runtime.Tests	\
+	System.Runtime.CompilerServices.Unsafe \
 	legacy/Mono.Cecil \
 	$(pcl_facade_dirs)
 
@@ -365,6 +382,7 @@ xbuild_14_SUBDIRS := $(xbuild_4_0_dirs) Microsoft.NuGet.Build.Tasks
 winaot_SUBDIRS := $(winaot_dirs)
 orbis_SUBDIRS := $(orbis_dirs)
 unreal_SUBDIRS := $(unreal_dirs)
+wasm_SUBDIRS := $(wasm_dirs)
 
 include ../build/rules.make
 

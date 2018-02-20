@@ -1305,10 +1305,10 @@ mono_test_marshal_stringbuilder_array (char **array)
 LIBTEST_API int STDCALL 
 mono_test_marshal_unicode_string_array (gunichar2 **array, char **array2)
 {
-	GError *error = NULL;
+	GError *gerror = NULL;
 	char *s;
 	
-	s = g_utf16_to_utf8 (array [0], -1, NULL, NULL, &error);
+	s = g_utf16_to_utf8 (array [0], -1, NULL, NULL, &gerror);
 	if (strcmp (s, "ABC")) {
 		g_free (s);
 		return 1;
@@ -1316,7 +1316,7 @@ mono_test_marshal_unicode_string_array (gunichar2 **array, char **array2)
 	else
 		g_free (s);
 
-	s = g_utf16_to_utf8 (array [1], -1, NULL, NULL, &error);
+	s = g_utf16_to_utf8 (array [1], -1, NULL, NULL, &gerror);
 	if (strcmp (s, "DEF")) {
 		g_free (s);
 		return 2;
@@ -1769,10 +1769,10 @@ mono_test_asany (void *ptr, int what)
 			return 1;
 	}
 	case 4: {
-		GError *error = NULL;
+		GError *gerror = NULL;
 		char *s;
 
-		s = g_utf16_to_utf8 ((const gunichar2 *)ptr, -1, NULL, NULL, &error);
+		s = g_utf16_to_utf8 ((const gunichar2 *)ptr, -1, NULL, NULL, &gerror);
 
 		if (!s)
 			return 1;
@@ -5493,6 +5493,38 @@ mono_test_marshal_thread_attach (SimpleDelegate del)
 	pthread_t t;
 
 	res = pthread_create (&t, NULL, (gpointer (*)(gpointer))call_managed, del);
+	g_assert (res == 0);
+	pthread_join (t, NULL);
+
+	return call_managed_res;
+#endif
+}
+
+typedef struct {
+	char arr [4 * 1024];
+} LargeStruct;
+
+typedef int (STDCALL *LargeStructDelegate) (LargeStruct *s);
+
+static void
+call_managed_large_vt (gpointer arg)
+{
+	LargeStructDelegate del = (LargeStructDelegate)arg;
+	LargeStruct s;
+
+	call_managed_res = del (&s);
+}
+
+LIBTEST_API int STDCALL
+mono_test_marshal_thread_attach_large_vt (SimpleDelegate del)
+{
+#ifdef WIN32
+	return 43;
+#else
+	int res;
+	pthread_t t;
+
+	res = pthread_create (&t, NULL, (gpointer (*)(gpointer))call_managed_large_vt, del);
 	g_assert (res == 0);
 	pthread_join (t, NULL);
 

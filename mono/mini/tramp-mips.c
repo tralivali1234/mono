@@ -25,6 +25,7 @@
 
 #include "mini.h"
 #include "mini-mips.h"
+#include "mini-runtime.h"
 
 /*
  * get_unbox_trampoline:
@@ -110,8 +111,6 @@ mono_arch_patch_plt_entry (guint8 *code, gpointer *got, mgreg_t *regs, guint8 *a
  * #define STACK (MIPS_MINIMAL_STACK_SIZE + 4 * sizeof (gulong) + sizeof (MonoLMF) + 14 * sizeof (double) + 13 * (sizeof (gulong)))
  * STACK would be 444 for 32 bit darwin
  */
-
-#define ALIGN_TO(val,align) ((((guint64)val) + ((align) - 1)) & ~((align) - 1))
 
 #define STACK (int)(ALIGN_TO(4*IREG_SIZE + 8 + sizeof(MonoLMF) + 32, 8))
 

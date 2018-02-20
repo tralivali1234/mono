@@ -24,10 +24,9 @@
 
 #include "mini.h"
 #include "mini-x86.h"
+#include "mini-runtime.h"
 #include "debugger-agent.h"
 #include "jit-icalls.h"
-
-#define ALIGN_TO(val,align) ((((guint64)val) + ((align) - 1)) & ~((align) - 1))
 
 /*
  * mono_arch_get_unbox_trampoline:
@@ -108,7 +107,7 @@ mono_arch_patch_callsite (guint8 *method_start, guint8 *orig_code, guint8 *addr)
 	orig_code -= 6;
 	if (code [1] == 0xe8) {
 		if (can_write) {
-			InterlockedExchange ((gint32*)(orig_code + 2), (guint)addr - ((guint)orig_code + 1) - 5);
+			mono_atomic_xchg_i32 ((gint32*)(orig_code + 2), (guint)addr - ((guint)orig_code + 1) - 5);
 
 			/* Tell valgrind to recompile the patched code */
 			VALGRIND_DISCARD_TRANSLATIONS (orig_code + 2, 4);
@@ -116,7 +115,7 @@ mono_arch_patch_callsite (guint8 *method_start, guint8 *orig_code, guint8 *addr)
 	} else if (code [1] == 0xe9) {
 		/* A PLT entry: jmp <DISP> */
 		if (can_write)
-			InterlockedExchange ((gint32*)(orig_code + 2), (guint)addr - ((guint)orig_code + 1) - 5);
+			mono_atomic_xchg_i32 ((gint32*)(orig_code + 2), (guint)addr - ((guint)orig_code + 1) - 5);
 	} else {
 		printf ("Invalid trampoline sequence: %x %x %x %x %x %x %x\n", code [0], code [1], code [2], code [3],
 				code [4], code [5], code [6]);
@@ -394,7 +393,7 @@ mono_arch_create_generic_trampoline (MonoTrampolineType tramp_type, MonoTrampInf
 	for (i = X86_EAX; i <= X86_EDI; ++i) {
 		if (i == X86_ESP || i == X86_EBP)
 			continue;
-		if (i == X86_EAX && !((tramp_type == MONO_TRAMPOLINE_RESTORE_STACK_PROT) || (tramp_type == MONO_TRAMPOLINE_AOT_PLT)))
+		if (i == X86_EAX && tramp_type != MONO_TRAMPOLINE_AOT_PLT)
 			continue;
 		x86_mov_reg_membase (code, i, X86_EBP, regarray_offset + (i * 4), 4);
 	}
@@ -749,11 +748,3 @@ mono_arch_create_sdb_trampoline (gboolean single_step, MonoTrampInfo **info, gbo
 
 	return buf;
 }
-
-gpointer
-mono_arch_get_enter_icall_trampoline (MonoTrampInfo **info)
-{
-	g_assert_not_reached ();
-	return NULL;
-}
-

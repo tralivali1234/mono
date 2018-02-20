@@ -1,7 +1,7 @@
 #!/bin/bash -e
 
 ${TESTCMD} --label=mini --timeout=5m make -w -C mono/mini -k check check-seq-points EMIT_NUNIT=1
-if [[ ${label} == w* ]]
+if [[ ${CI_TAGS} == *'win-'* ]]
 then ${TESTCMD} --label=aot-test --skip;
 else ${TESTCMD} --label=aot-test --timeout=30m make -w -C mono/tests -j4 -k test-aot
 fi
@@ -15,16 +15,17 @@ ${TESTCMD} --label=verify --timeout=15m make -w -C runtime mcs-compileall
 ${TESTCMD} --label=profiler --timeout=30m make -w -C mono/profiler -k check
 ${TESTCMD} --label=compiler --timeout=30m make -w -C mcs/tests run-test
 ${TESTCMD} --label=compiler-errors --timeout=30m make -w -C mcs/errors run-test
+${TESTCMD} --label=System-xunit --timeout=5m make -w -C mcs/class/System run-xunit-test
 ${TESTCMD} --label=System --timeout=10m bash -c "export MONO_TLS_PROVIDER=legacy && make -w -C mcs/class/System run-test"
-if [[ ${label} == osx-* ]]; then ${TESTCMD} --label=System-btls --timeout=10m bash -c "export MONO_TLS_PROVIDER=btls && make -w -C mcs/class/System run-test"; fi
+if [[ ${CI_TAGS} == *'osx-'* ]]; then ${TESTCMD} --label=System-btls --timeout=10m bash -c "export MONO_TLS_PROVIDER=btls && make -w -C mcs/class/System run-test"; fi
 ${TESTCMD} --label=System.XML --timeout=5m make -w -C mcs/class/System.XML run-test
 ${TESTCMD} --label=Mono.Security --timeout=5m make -w -C mcs/class/Mono.Security run-test
 ${TESTCMD} --label=System.Security --timeout=5m make -w -C mcs/class/System.Security run-test
-if [[ ${label} == w* ]]
+if [[ ${CI_TAGS} == *'win-'* ]]
 then ${TESTCMD} --label=System.Drawing --skip;
 else ${TESTCMD} --label=System.Drawing --timeout=5m make -w -C mcs/class/System.Drawing run-test
 fi
-if [[ ${label} == osx-* ]] || [[ ${label} == w* ]]
+if [[ ${CI_TAGS} == *'osx-'* ]] || [[ ${CI_TAGS} == *'win-'* ]]
 then ${TESTCMD} --label=Windows.Forms --skip;
 else
     if xvfb-run -a -- make -C mcs/class/System.Windows.Forms test-simple;
@@ -32,7 +33,8 @@ else
     else echo "The simple test failed (maybe because of missing X server), skipping test suite." && ${TESTCMD} --label=Windows.Forms --skip; fi
 fi
 ${TESTCMD} --label=System.Data --timeout=5m make -w -C mcs/class/System.Data run-test
-if [[ ${label} == w* ]]; then ${TESTCMD} --label=Mono.Data.Sqlite --skip; else ${TESTCMD} --label=Mono.Data.Sqlite --timeout=5m make -w -C mcs/class/Mono.Data.Sqlite run-test; fi
+${TESTCMD} --label=System.Data-xunit --timeout=5m make -w -C mcs/class/System.Data run-xunit-test
+if [[ ${CI_TAGS} == *'win-'* ]]; then ${TESTCMD} --label=Mono.Data.Sqlite --skip; else ${TESTCMD} --label=Mono.Data.Sqlite --timeout=5m make -w -C mcs/class/Mono.Data.Sqlite run-test; fi
 ${TESTCMD} --label=System.Data.OracleClient --timeout=5m make -w -C mcs/class/System.Data.OracleClient run-test;
 ${TESTCMD} --label=System.Design --timeout=5m make -w -C mcs/class/System.Design run-test;
 ${TESTCMD} --label=Mono.Posix --timeout=5m make -w -C mcs/class/Mono.Posix run-test
@@ -46,6 +48,8 @@ ${TESTCMD} --label=System.ServiceProcess --timeout=5m make -w -C mcs/class/Syste
 ${TESTCMD} --label=I18N.CJK --timeout=5m make -w -C mcs/class/I18N/CJK run-test
 ${TESTCMD} --label=I18N.West --timeout=5m make -w -C mcs/class/I18N/West run-test
 ${TESTCMD} --label=I18N.MidEast --timeout=5m make -w -C mcs/class/I18N/MidEast run-test
+${TESTCMD} --label=I18N.Rare --timeout=5m make -w -C mcs/class/I18N/Rare run-test
+${TESTCMD} --label=I18N.Other --timeout=5m make -w -C mcs/class/I18N/Other run-test
 ${TESTCMD} --label=System.DirectoryServices --timeout=5m make -w -C mcs/class/System.DirectoryServices run-test
 ${TESTCMD} --label=Microsoft.Build.Engine --timeout=5m make -w -C mcs/class/Microsoft.Build.Engine run-test
 ${TESTCMD} --label=Microsoft.Build.Framework --timeout=5m make -w -C mcs/class/Microsoft.Build.Framework run-test
@@ -58,6 +62,7 @@ ${TESTCMD} --label=System.Configuration --timeout=5m make -w -C mcs/class/System
 ${TESTCMD} --label=System.Transactions --timeout=5m make -w -C mcs/class/System.Transactions run-test
 ${TESTCMD} --label=System.Web.Extensions --timeout=5m make -w -C mcs/class/System.Web.Extensions run-test
 ${TESTCMD} --label=System.Core --timeout=15m make -w -C mcs/class/System.Core run-test
+${TESTCMD} --label=System.Core-xunit --timeout=15m make -w -C mcs/class/System.Core run-xunit-test
 ${TESTCMD} --label=System.Xml.Linq --timeout=5m make -w -C mcs/class/System.Xml.Linq run-test
 ${TESTCMD} --label=System.Data.DSE --timeout=5m make -w -C mcs/class/System.Data.DataSetExtensions run-test
 ${TESTCMD} --label=System.Web.Abstractions --timeout=5m make -w -C mcs/class/System.Web.Abstractions run-test
@@ -82,9 +87,11 @@ ${TESTCMD} --label=System.Xaml --timeout=5m make -w -C mcs/class/System.Xaml run
 ${TESTCMD} --label=System.Net.Http --timeout=5m make -w -C mcs/class/System.Net.Http run-test
 ${TESTCMD} --label=System.Json --timeout=5m make -w -C mcs/class/System.Json run-test
 ${TESTCMD} --label=System.Threading.Tasks.Dataflow --timeout=5m make -w -C mcs/class/System.Threading.Tasks.Dataflow run-test
+${TESTCMD} --label=System.Runtime.CompilerServices.Unsafe-xunit --timeout=5m make -w -C mcs/class/System.Runtime.CompilerServices.Unsafe run-xunit-test
 ${TESTCMD} --label=Mono.Debugger.Soft --timeout=5m make -w -C mcs/class/Mono.Debugger.Soft run-test
+${TESTCMD} --label=Microsoft.CSharp-xunit --timeout=5m make -w -C mcs/class/Microsoft.CSharp run-xunit-test
 ${TESTCMD} --label=Microsoft.Build --timeout=5m make -w -C mcs/class/Microsoft.Build run-test
-${TESTCMD} --label=monodoc --timeout=10m make -w -C mcs/tools/mdoc run-test
+if [[ ${CI_TAGS} == *'win-'* ]]; then ${TESTCMD} --label=monodoc --skip; else ${TESTCMD} --label=monodoc --timeout=10m make -w -C mcs/tools/mdoc run-test; fi
 ${TESTCMD} --label=Microsoft.Build-12 --timeout=10m make -w -C mcs/class/Microsoft.Build run-test PROFILE=xbuild_12
 ${TESTCMD} --label=Microsoft.Build.Engine-12 --timeout=60m make -w -C mcs/class/Microsoft.Build.Engine run-test PROFILE=xbuild_12
 ${TESTCMD} --label=Microsoft.Build.Framework-12 --timeout=60m make -w -C mcs/class/Microsoft.Build.Framework run-test PROFILE=xbuild_12
@@ -96,8 +103,9 @@ ${TESTCMD} --label=Microsoft.Build.Framework-14 --timeout=60m make -w -C mcs/cla
 ${TESTCMD} --label=Microsoft.Build.Tasks-14 --timeout=60m make -w -C mcs/class/Microsoft.Build.Tasks run-test PROFILE=xbuild_14
 ${TESTCMD} --label=Microsoft.Build.Utilities-14 --timeout=60m make -w -C mcs/class/Microsoft.Build.Utilities run-test PROFILE=xbuild_14
 ${TESTCMD} --label=System.IO.Compression --timeout=5m make -w -C mcs/class/System.IO.Compression run-test
-if [[ ${label} == w* ]]; then ${TESTCMD} --label=symbolicate --skip; else ${TESTCMD} --label=symbolicate --timeout=60m make -w -C mcs/tools/mono-symbolicate check; fi
+if [[ ${CI_TAGS} == *'win-'* ]]; then ${TESTCMD} --label=symbolicate --skip; else ${TESTCMD} --label=symbolicate --timeout=60m make -w -C mcs/tools/mono-symbolicate check; fi
 ${TESTCMD} --label=monolinker --timeout=10m make -w -C mcs/tools/linker check
+${TESTCMD} --label=csi --timeout=10m make -w -C mcs/packages run-test
 
 if [[ $CI_TAGS == *'ms-test-suite'* ]]
 then ${TESTCMD} --label=ms-test-suite --timeout=30m make -w -C acceptance-tests check-ms-test-suite

@@ -32,3 +32,22 @@ mono_arch_get_throw_corlib_exception (MonoTrampInfo **info, gboolean aot)
 	g_error ("mono_arch_get_throw_corlib_exception");
 	return NULL;
 }
+
+gpointer
+mono_arch_get_rethrow_exception (MonoTrampInfo **info, gboolean aot)
+{
+	g_error ("mono_arch_get_rethrow_exception");
+	return NULL;
+}
+
+gpointer
+mono_arch_get_throw_exception (MonoTrampInfo **info, gboolean aot)
+{
+	g_error ("mono_arch_get_rethrow_exception");
+	return NULL;
+}
+
+void
+mono_arch_undo_ip_adjustment (MonoContext *ctx)
+{
+}

@@ -78,7 +78,6 @@ LONG CALLBACK seh_handler(EXCEPTION_POINTERS* ep);
 #else
 #define MONO_ARCH_SIGNAL_STACK_SIZE (16 * 1024)
 #endif
-#define MONO_ARCH_HAVE_RESTORE_STACK_SUPPORT 1
 
 #define MONO_ARCH_CPU_SPEC mono_x86_desc
 
@@ -236,7 +235,6 @@ typedef struct {
 #define MONO_ARCH_HAVE_DUMMY_INIT 1
 #define MONO_ARCH_HAVE_SDB_TRAMPOLINES 1
 #define MONO_ARCH_HAVE_PATCH_CODE_NEW 1
-#define MONO_ARCH_HAVE_INIT_LMF_EXT 1
 
 /* Used for optimization, not complete */
 #define MONO_ARCH_IS_OP_MEMBASE(opcode) ((opcode) == OP_X86_PUSH_MEMBASE)

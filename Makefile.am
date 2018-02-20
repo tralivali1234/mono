@@ -11,9 +11,15 @@ else
 tools_dir = tools
 endif
 
-SUBDIRS = po $(libgc_dir) mono $(ikvm_native_dir) support data runtime scripts man samples $(tools_dir) msvc $(docs_dir) acceptance-tests llvm
+if BUILD_SUPPORT
+support_dir = support
+else
+support_dir =
+endif
+
+SUBDIRS = po $(libgc_dir) mono $(ikvm_native_dir) $(support_dir) data runtime scripts man samples $(tools_dir) msvc $(docs_dir) acceptance-tests llvm
 # Keep in sync with SUBDIRS
-DIST_SUBDIRS = m4 po $(libgc_dir) mono ikvm-native support data runtime scripts man samples tools msvc docs acceptance-tests llvm
+DIST_SUBDIRS = m4 po $(libgc_dir) mono ikvm-native $(support_dir) data runtime scripts man samples tools msvc docs acceptance-tests llvm
 
 all: update_submodules
 
@@ -44,6 +50,7 @@ dist-hook:
 	rm -rf `find $(top_distdir)/external -path '*\.git'`
 	rm -f `find $(top_distdir)/external -path '*\.exe' -not -path '*/roslyn-binaries/*'`
 	rm -f `find $(top_distdir)/external -path '*\.dll' -not -path '*/binary-reference-assemblies/*' -not -path '*/roslyn-binaries/*'`
+	rm -rf "$(top_distdir)/external/linker/linker/Tests"
 
 pkgconfigdir = $(libdir)/pkgconfig
 noinst_DATA = mono-uninstalled.pc
@@ -114,7 +121,7 @@ update-csproj:
 	-rm msvc/scripts/order.xml
 	-rm -rf msvc/scripts/inputs
 	-mkdir msvc/scripts/inputs
-	(cd runtime; make V=1 extra_targets=csproj-local)
+	(cd runtime; $(MAKE) V=1 extra_targets=csproj-local)
 
 package-inputs:
 	echo '<?xml version="1.0" encoding="utf-8"?>' > msvc/scripts/order.xml
@@ -143,9 +150,9 @@ update-llvm-version:
 
 
 update-solution-files:
-	make update-csproj
-	make package-inputs
-	(cd msvc/scripts; make genproj.exe; mono genproj.exe $(GENPROJ_ARGS))
+	$(MAKE) update-csproj
+	$(MAKE) package-inputs
+	(cd msvc/scripts; $(MAKE) genproj.exe; mono genproj.exe $(GENPROJ_ARGS))
 
 update-solution-files-with-tests:
-	make "GENPROJ_ARGS=2012 true true" update-solution-files
+	$(MAKE) "GENPROJ_ARGS=2012 true true" update-solution-files

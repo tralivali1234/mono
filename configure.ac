@@ -1,8 +1,8 @@
 # Process this file with autoconf to produce a configure script.
 #AC_PREREQ([2.62])
 
-AC_INIT(mono, [5.9.0],
-        [http://bugzilla.xamarin.com/enter_bug.cgi?classification=Mono])
+AC_INIT(mono, [5.13.0],
+        [https://github.com/mono/mono/issues/new])
 
 AC_CONFIG_SRCDIR([README.md])
 AC_CONFIG_MACRO_DIR([m4])
@@ -40,7 +40,7 @@ MONO_VERSION_BUILD=`echo $VERSION | cut -d . -f 3`
 # This can be reset to 0 when Mono's version number is bumped
 # since it's part of the corlib version (the prefix '1' in the full
 # version number is to ensure the number isn't treated as octal in C)
-MONO_CORLIB_COUNTER=0
+MONO_CORLIB_COUNTER=2
 MONO_CORLIB_VERSION=`printf "1%02d%02d%02d%03d" $MONO_VERSION_MAJOR $MONO_VERSION_MINOR 0 $MONO_CORLIB_COUNTER`
 
 AC_DEFINE_UNQUOTED(MONO_CORLIB_VERSION,$MONO_CORLIB_VERSION,[Version of the corlib-runtime interface])
@@ -100,7 +100,7 @@ extra_runtime_ldflags=""
 # Hack for WASM
 # Current autotools (v1.15) doesn't have a triplet we can use for wasm so the kludge we do is to
 # work around it by using a feature flag instead
-AC_ARG_ENABLE(wasm,[  --enable-wasm	Hack to set the current runtime to target wasm], enable_wasm=$enableval)
+AC_ARG_ENABLE(wasm,[  --enable-wasm    Hack to set the current runtime to target wasm], enable_wasm=$enableval)
 
 # Thread configuration inspired by sleepycat's db
 AC_MSG_CHECKING([host platform characteristics])
@@ -113,6 +113,8 @@ ikvm_native=yes
 host_win32=no
 target_win32=no
 platform_android=no
+platform_tizen=no
+platform_ios=no
 host_darwin=no
 
 
@@ -121,6 +123,7 @@ CFLAGS="$CFLAGS -D_REENTRANT -D_GNU_SOURCE -DNO_UNALIGNED_ACCESS -s WASM=1"
 CPPFLAGS="$CPPFLAGS -D_REENTRANT -DUSE_MMAP -D_GNU_SOURCE -DNO_UNALIGNED_ACCESS -s WASM=1"
 libdl="-ldl"
 libgc_threads=pthreads
+platform_wasm=yes
 
 else
 
@@ -204,6 +207,7 @@ case "$host" in
 		;;
 	*-*-*openbsd*)
 		CPPFLAGS="$CPPFLAGS -D_THREAD_SAFE -DGC_OPENBSD_THREADS -DHOST_BSD -D_REENTRANT -DUSE_MMAP"
+		LDFLAGS="${LDFLAGS} -Wl,-zwxneeded"
 		if test "x$disable_munmap" != "xyes"; then
 		CPPFLAGS="$CPPFLAGS -DUSE_MUNMAP"
 		fi
@@ -213,6 +217,7 @@ case "$host" in
 		AC_DEFINE(PTHREAD_POINTER_ID)
 		libdl=
 		libgc_threads=pthreads
+		with_tls=pthread
 		with_sigaltstack=no
 		use_sigposix=yes
 		with_sgen_default_concurrent=yes
@@ -266,6 +271,11 @@ case "$host" in
                 	# available during cross-compilation
                 	mono_cv_uscore=no
                 fi
+		case "$host" in
+		*-tizen-linux-*)
+			platform_tizen=yes
+			;;
+		esac
 		case "$host" in
 		aarch64-*)
 			support_boehm=no
@@ -344,8 +354,12 @@ case "$host" in
 				with_sgen_default_concurrent=yes
 				;;
 			arm*-darwin*)
+				platform_ios=yes
 				has_dtrace=no
-				;;			
+				;;
+			aarch64*-darwin*)
+				platform_ios=yes
+				;;
 		esac
 		;;
 	*-*-haiku*)
@@ -357,10 +371,31 @@ case "$host" in
 		AC_DEFINE(PTHREAD_POINTER_ID)
 		dnl Haiku does not support static TLS with __thread
 		with_tls=pthread
-		dnl Boehm is too much work to backport Haiku support for
-		support_boehm=no
 		libgc_threads=pthreads
 		use_sigposix=yes
+		;;
+	*-*-aix*|*-*-os400*)
+		dnl Set up a 64-bit build
+		CPPFLAGS="$CPPFLAGS -maix64 -DGC_AIX_THREADS -D_ALL_SOURCE -D_LARGE_FILES -D_REENTRANT"
+		LDFLAGS="-maix64"
+		libmono_cflags="-D_REENTRANT"
+		dnl Would you believe GNU nm doesn't know how to process AIX libraries?
+		dnl Hardcode IBM binutils in case GNU ones end up on our path. Also
+		dnl specifiy 64-bit mode for tools.
+		AR="/usr/bin/ar -X64"
+		NM="/usr/bin/nm -X64"
+		dnl SGen is the future (changes to Boehm support code would be
+		dnl required if you wish to re-enable Boehm)
+		support_boehm=no
+		with_gc=sgen
+		need_link_unlink=yes
+		use_sigposix=yes
+		dnl the valloc call to alloc the guard page bombs out, even with extending the data area
+		with_sigaltstack=no
+		dnl use pthread TLS, __thread has issues with the compiler flags we use
+		with_tls=pthread
+		dnl ppc Linux is the same? test further
+		disable_munmap=yes
 		;;
 	*)
 		AC_MSG_WARN([*** Please add $host to configure.ac checks!])
@@ -400,6 +435,9 @@ AM_CONDITIONAL(HOST_LINUX, echo x$target_os | grep -q linux)
 AM_CONDITIONAL(HOST_DARWIN, test x$host_darwin = xyes)
 AM_CONDITIONAL(HOST_SIGPOSIX, test x$use_sigposix = xyes)
 AM_CONDITIONAL(HOST_ANDROID, test x$platform_android = xyes)
+AM_CONDITIONAL(HOST_TIZEN, test x$platform_tizen = xyes)
+AM_CONDITIONAL(HOST_IOS, test x$platform_ios = xyes)
+AM_CONDITIONAL(HOST_WASM, test x$platform_wasm = xyes)
 
 if test -z "$HOST_DARWIN_TRUE"; then :
 PLATFORM_AOT_SUFFIX=.dylib
@@ -503,7 +541,6 @@ AC_CHECK_HEADER(zlib.h, [have_zlib=yes], [have_zlib=no])
 if test x$have_zlib = xyes; then
    AC_TRY_COMPILE([#include <zlib.h>], [
    #if defined(ZLIB_VERNUM) && (ZLIB_VERNUM >= 0x1230)
-   return 0;
    #else
    #error No good zlib found
    #endif
@@ -530,6 +567,7 @@ AC_CHECK_HEADERS(sys/poll.h)
 AC_CHECK_HEADERS(sys/wait.h)
 AC_CHECK_HEADERS(grp.h)
 AC_CHECK_HEADERS(syslog.h)
+AC_CHECK_FUNCS(vsyslog)
 
 # for mono/dis
 AC_CHECK_HEADERS(wchar.h)
@@ -601,7 +639,6 @@ if test x$platform_android = xyes; then
 					#include <android/versioning.h>
 				],[
 					#if __ANDROID_API_O__ == 26 && defined(__INTRODUCED_IN)
-						return 0
 					#else
 						#error __ANDROID_API_O__ != 26 or the __INTRODUCED_IN macro not defined
 					#endif
@@ -642,7 +679,6 @@ AC_CACHE_CHECK([for clang],
 		#else
 		#error "FAILED"
 		#endif
-		return 0;
 	],
 	[mono_cv_clang=yes],
 	[mono_cv_clang=no],
@@ -678,7 +714,6 @@ if test x"$GCC" = xyes; then
 		CFLAGS="$CFLAGS -Wunused-but-set-variable -Werror"
 		AC_MSG_CHECKING(for -Wno-unused-but-set-variable option to gcc)
 		AC_TRY_COMPILE([],[
-				return 0;
 		], [
 		   AC_MSG_RESULT(yes)
 		   CFLAGS="$ORIG_CFLAGS -Wno-unused-but-set-variable"
@@ -789,8 +824,9 @@ AC_ARG_WITH(crosspkgdir, [  --with-crosspkgdir=/path/to/pkg-config/dir      Chan
 	fi
 )
 
-AC_CHECK_PROG(ninja, ninja, yes, no)
-AM_CONDITIONAL(NINJA, test x$ninja != xno)
+AC_ARG_ENABLE(ninja,[  --enable-ninja    Enable using ninja where available], enable_ninja=$enableval)
+AC_CHECK_PROG(HAVE_NINJA, ninja, yes, no)
+AM_CONDITIONAL(NINJA, test x$enable_ninja = xyes -a x$HAVE_NINJA != xno)
 
 AC_ARG_ENABLE(werror, [  --enable-werror Pass -Werror to the C compiler], werror_flag=$enableval, werror_flag=no)
 if test x$werror_flag = xyes; then
@@ -840,6 +876,7 @@ fi
 AM_CONDITIONAL(STATIC_MONO, test x$with_static_mono != xno)
 AM_CONDITIONAL(SHARED_MONO, test x$with_shared_mono != xno)
 AC_ARG_ENABLE(mcs-build, [  --disable-mcs-build disable the build of the mcs directory], try_mcs_build=$enableval, enable_mcs_build=yes)
+AC_ARG_ENABLE(support-build, [  --disable-support-build disable the build of the support directory], try_support_build=$enableval, enable_support_build=yes)
 
 AC_ARG_WITH(xen_opt,   [  --with-xen_opt=yes,no          Enable Xen-specific behaviour (defaults to yes)],[],[with_xen_opt=yes])
 if test "x$with_xen_opt" = "xyes" -a "x$mono_cv_clang" = "xno"; then
@@ -848,7 +885,6 @@ if test "x$with_xen_opt" = "xyes" -a "x$mono_cv_clang" = "xno"; then
 	CFLAGS="$CFLAGS -mno-tls-direct-seg-refs"
 	AC_MSG_CHECKING(for -mno-tls-direct-seg-refs option to gcc)
 	AC_TRY_COMPILE([], [
-		return 0;
 	], [
 	   AC_MSG_RESULT(yes)
 	   # Pass it to libgc as well
@@ -899,6 +935,51 @@ if test $csc_compiler = default; then
 fi
 AC_MSG_RESULT($csc_compiler)
 
+AC_ARG_WITH(jemalloc,             [  --with-jemalloc=yes,no               If jemalloc is enabled (defaults to no)],                                     [], [with_jemalloc=no])
+AC_ARG_WITH(jemalloc-always,      [  --with-jemalloc_always=yes,no        If jemalloc is enabled and always used (defaults to yes)],                    [], [with_jemalloc_always=no])
+AC_ARG_WITH(jemalloc-assert,      [  --with-jemalloc_assert=yes,no        If jemalloc performs runtime checks for memory correctness (defaults to no)], [], [with_jemalloc_assert=no])
+
+
+if test x$target_win32 = xyes; then
+with_jemalloc=no
+with_jemalloc_assert=no
+with_jemalloc_always=no
+fi
+
+AM_CONDITIONAL(MONO_JEMALLOC_ASSERT, [test "x$with_jemalloc_assert" = "xyes"])
+if test "x$with_jemalloc_assert" = "xyes"; then
+JEMALLOC_CFLAGS+=" -DMONO_JEMALLOC_ASSERT"
+AC_DEFINE(MONO_JEMALLOC_ASSERT, 1, [Make jemalloc assert for mono])
+AC_SUBST(MONO_JEMALLOC_ASSERT, 1)
+fi
+
+AM_CONDITIONAL(MONO_JEMALLOC_DEFAULT, [test "x$with_jemalloc_always" = "xyes"])
+if test "x$with_jemalloc_always" = "xyes"; then
+with_jemalloc=yes
+JEMALLOC_CFLAGS+=" -DMONO_JEMALLOC_DEFAULT"
+AC_DEFINE(MONO_JEMALLOC_DEFAULT, 1, [Make jemalloc default for mono])
+AC_SUBST(MONO_JEMALLOC_DEFAULT, 1)
+fi
+
+AM_CONDITIONAL(MONO_JEMALLOC_ENABLED, [test "x$with_jemalloc" = "xyes"])
+if test "x$with_jemalloc" = "xyes"; then
+JEMALLOC_LDFLAGS="-L`pwd`/mono/utils/jemalloc/jemalloc/lib -ljemalloc_pic"
+JEMALLOC_CFLAGS+=" -DMONO_JEMALLOC_ENABLED -I `pwd`/mono/utils/jemalloc/jemalloc/include"
+JEMALLOC_AUTOCONF_FLAGS=" --build=$target --host=$host"
+
+if test "x$target_mach" = "xyes"; then
+	JEMALLOC_CPPFLAGS=" -stdlib=libc++ "
+fi
+
+AC_DEFINE(MONO_JEMALLOC_ENABLED, 1, [Enable jemalloc usage for mono])
+AC_SUBST(MONO_JEMALLOC_ENABLED, 1)
+
+AC_SUBST(JEMALLOC_CFLAGS)
+AC_SUBST(JEMALLOC_CPPFLAGS)
+AC_SUBST(JEMALLOC_LDFLAGS)
+AC_SUBST(JEMALLOC_AUTOCONF_FLAGS)
+fi
+
 #
 # Set the build profiles and options before things which use them
 #
@@ -915,9 +996,56 @@ AC_ARG_WITH(testing_aot_full,    [  --with-testing_aot_full=yes,no      If you w
 AC_ARG_WITH(winaot,              [  --with-winaot=yes,no                If you want to build the Windows friendly AOT assemblies (defaults to no)], [], [with_winaot=default])
 AC_ARG_WITH(orbis,               [  --with-orbis=yes,no                 If you want to build the Orbis assemblies (defaults to no)], [], [with_orbis=default])
 AC_ARG_WITH(unreal,              [  --with-unreal=yes,no                If you want to build the Unreal assemblies (defaults to no)], [], [with_unreal=default])
+AC_ARG_WITH(wasm,                [  --with-wasm=yes,no                  If you want to build the WebAssembly (defaults to no)], [], [with_wasm=default])
 
 
 AC_ARG_WITH(runtime_preset, [  --with-runtime_preset=net_4_x,all,aot,hybridaot,fullaot,bitcode,unreal   Which default profile to build (defaults to net_4_x)],  [], [with_runtime_preset=net_4_x])
+AC_ARG_WITH(spectre-mitigation,             [  --with-spectre-mitigation=yes,no   If you want to build the runtime with compiler flags that enable Spectre mitigation (defaults to no)], [], [with_spectre_mitigation=default])
+AC_ARG_WITH(spectre-indirect-branch-choice,   [  --with-spectre-indirect-branch-choice=keep,thunk,inline,extern   Convert indirect branches to the specified kind of thunk (defaults to inline)], [], [with_spectre_indirect_branch_choice=inline])
+AC_ARG_WITH(spectre-function-return-choice, [  --with-spectre-function-return-choice=keep,thunk,inline,extern   Convert function return instructions to the specified kind of thunk (defaults to inline)], [], [with_spectre_function_return_choice=inline])
+
+dnl
+dnl Spectre compiler mitigation flag checks
+dnl
+if test "x$with_spectre_mitigation" = "xyes"; then
+   AC_MSG_NOTICE([Compiler Spectre mitigation support checks])
+   SPECTRE_CFLAGS=
+   SPECTRE_INDIRECT_BRANCH_KIND=
+   case "x$with_spectre_indirect_branch_choice" in
+       xkeep) SPECTRE_INDIRECT_BRANCH_KIND=keep ;;
+       xthunk) SPECTRE_INDIRECT_BRANCH_KIND=thunk ;;
+       xinline) SPECTRE_INDIRECT_BRANCH_KIND=thunk-inline ;;
+       xextern) SPECTRE_INDIRECT_BRANCH_KIND=thunk-extern ;;
+       *) AC_MSG_ERROR([Invalid indirect jump thunk kind ($with_spectre_indirect_branch_choice)]) ;;
+   esac
+
+   SPECTRE_FUNCTION_RETURN_KIND=""
+   case "x$with_spectre_function_return_choice" in
+       xkeep) SPECTRE_FUNCTION_RETURN_KIND=keep ;;
+       xthunk) SPECTRE_FUNCTION_RETURN_KIND=thunk ;;
+       xinline) SPECTRE_FUNCTION_RETURN_KIND=thunk-inline ;;
+       xextern) SPECTRE_FUNCTION_RETURN_KIND=thunk-extern ;;
+       *) AC_MSG_ERROR([Invalid function return thunk kind ($with_spectre_function_return_choice)]) ;;
+   esac
+
+   AX_CHECK_COMPILE_FLAG(
+	[ -mindirect-branch=$SPECTRE_INDIRECT_BRANCH_KIND ],
+	[ SPECTRE_CFLAGS="$SPECTRE_CFLAGS -mindirect-branch=$SPECTRE_INDIRECT_BRANCH_KIND" ]
+   )
+
+   AX_CHECK_COMPILE_FLAG(
+	[ -mfunction-return=$SPECTRE_FUNCTION_RETURN_KIND ],
+	[ SPECTRE_CFLAGS="$SPECTRE_CFLAGS -mfunction-return=$SPECTRE_FUNCTION_RETURN_KIND" ]
+   )
+
+   if test "x$SPECTRE_CFLAGS" != "x" ; then
+        CFLAGS="$CFLAGS $SPECTRE_CFLAGS"
+	CXXFLAGS="$CXXFLAGS $SPECTRE_CFLAGS"
+	spectre_mitigation_status="mitigation enabled"
+   fi
+else
+	spectre_mitigation_status="no mitigation"
+fi
 
 dnl
 dnl Profile defaults
@@ -936,11 +1064,14 @@ with_testing_aot_full_default=no
 with_winaot_default=no
 with_orbis_default=no
 with_unreal_default=no
+with_wasm_default=no
 
 with_bitcode_default=no
 with_cooperative_gc_default=no
 
-INVARIANT_AOT_OPTIONS=nimt-trampolines=2000,ntrampolines=8000,nrgctx-fetch-trampolines=256,ngsharedvt-trampolines=4000
+INVARIANT_AOT_OPTIONS=nimt-trampolines=2000,ntrampolines=9000,nrgctx-fetch-trampolines=256,ngsharedvt-trampolines=4000
+
+AOT_BUILD_ATTRS=$INVARIANT_AOT_OPTIONS
 
 if test x$cross_compiling = xyes -o x$enable_mcs_build = xno; then
    DISABLE_MCS_DOCS_default=yes
@@ -956,6 +1087,7 @@ elif test x$with_runtime_preset = xall; then
    with_winaot_default=yes
    with_orbis_default=yes
    with_unreal_default=yes
+   with_wasm_default=yes
 elif test x$with_runtime_preset = xfullaot; then
    DISABLE_MCS_DOCS_default=yes
    with_testing_aot_full_default=yes
@@ -968,8 +1100,8 @@ elif test x$with_runtime_preset = xfullaot; then
    mono_feature_disable_appdomains='yes'
 
    AOT_BUILD_FLAGS="--runtime=mobile -O=gsharedvt --aot=full,$INVARIANT_AOT_OPTIONS"
-
    AOT_RUN_FLAGS="--runtime=mobile --full-aot"
+   AOT_MODE="full"
 elif test x$with_runtime_preset = xbitcode; then
    DISABLE_MCS_DOCS_default=yes
    with_testing_aot_full_default=yes
@@ -986,6 +1118,7 @@ elif test x$with_runtime_preset = xbitcode; then
 
    AOT_BUILD_FLAGS="--runtime=mobile --aot=llvmonly,$INVARIANT_AOT_OPTIONS"
    AOT_RUN_FLAGS="--runtime=mobile --llvmonly"
+   AOT_MODE="llvmonly"
 elif test x$with_runtime_preset = xhybridaot; then
    DISABLE_MCS_DOCS_default=yes
    with_testing_aot_hybrid_default=yes
@@ -1013,6 +1146,7 @@ elif test x$with_runtime_preset = xwinaot; then
 
    AOT_BUILD_FLAGS="--runtime=mobile --aot=full,$INVARIANT_AOT_OPTIONS"
    AOT_RUN_FLAGS="--runtime=mobile --full-aot"
+   AOT_MODE="llvmonly"
 elif test x$with_runtime_preset = xorbis; then
    DISABLE_MCS_DOCS_default=yes
    with_orbis_default=yes
@@ -1026,6 +1160,7 @@ elif test x$with_runtime_preset = xorbis; then
 
    AOT_BUILD_FLAGS="--runtime=mobile --aot=full,$INVARIANT_AOT_OPTIONS"
    AOT_RUN_FLAGS="--runtime=mobile --full-aot"
+   AOT_MODE="full"
 elif test x$with_runtime_preset = xunreal; then
    DISABLE_MCS_DOCS_default=yes
    with_unreal_default=yes
@@ -1037,6 +1172,19 @@ elif test x$with_runtime_preset = xunreal; then
 
    AOT_BUILD_FLAGS="--runtime=mobile --aot=hybrid,$INVARIANT_AOT_OPTIONS"
    AOT_RUN_FLAGS="--runtime=mobile --hybrid-aot"
+elif test x$with_runtime_preset = xwasm; then
+   DISABLE_MCS_DOCS_default=yes
+   with_wasm_default=yes
+   TEST_PROFILE=wasm
+
+   mono_feature_disable_com='yes'
+   mono_feature_disable_remoting='yes'
+   mono_feature_disable_reflection_emit_save='yes'
+   mono_feature_disable_reflection_emit='yes'
+   mono_feature_disable_appdomains='yes'
+
+   AOT_BUILD_FLAGS="--runtime=mobile --aot=full,$INVARIANT_AOT_OPTIONS"
+   AOT_RUN_FLAGS="--runtime=mobile --full-aot"
 else
    with_profile4_x_default=yes
 fi
@@ -1086,6 +1234,9 @@ fi
 if test "x$with_unreal" = "xdefault"; then
    with_unreal=$with_unreal_default
 fi
+if test "x$with_wasm" = "xdefault"; then
+   with_wasm=$with_wasm_default
+fi
 
 
 AM_CONDITIONAL(INSTALL_4_x, [test "x$with_profile4_x" = "xyes"])
@@ -1100,7 +1251,8 @@ AM_CONDITIONAL(INSTALL_TESTING_AOT_FULL, [test "x$with_testing_aot_full" != "xno
 AM_CONDITIONAL(INSTALL_WINAOT, [test "x$with_winaot" != "xno"])
 AM_CONDITIONAL(INSTALL_ORBIS, [test "x$with_orbis" != "xno"])
 AM_CONDITIONAL(INSTALL_UNREAL, [test "x$with_unreal" != "xno"])
-AM_CONDITIONAL(FULL_AOT_TESTS, [test "x$TEST_PROFILE" = "xtesting_aot_full"] || [test "x$TEST_PROFILE" = "xwinaot"] || [test "x$TEST_PROFILE" = "xorbis"])
+AM_CONDITIONAL(INSTALL_WASM, [test "x$with_wasm" != "xno"])
+AM_CONDITIONAL(FULL_AOT_TESTS, [test "x$TEST_PROFILE" = "xtesting_aot_full"] || [test "x$TEST_PROFILE" = "xwinaot"] || [test "x$TEST_PROFILE" = "xorbis"] || [test "x$TEST_PROFILE" = "xwasm"])
 AM_CONDITIONAL(HYBRID_AOT_TESTS, [test "x$TEST_PROFILE" = "xtesting_aot_hybrid"] || [test "x$TEST_PROFILE" = "xunreal"])
 
 default_profile=net_4_x
@@ -1127,6 +1279,9 @@ if test -z "$INSTALL_ORBIS_TRUE"; then :
 fi
 if test -z "$INSTALL_UNREAL_TRUE"; then :
    default_profile=unreal
+fi
+if test -z "$INSTALL_WASM_TRUE"; then :
+   default_profile=wasm
 fi
 if test -z "$INSTALL_4_x_TRUE"; then :
    default_profile=net_4_x
@@ -1158,7 +1313,7 @@ fi
 
 AC_ARG_ENABLE(minimal, [  --enable-minimal=LIST      drop support for LIST subsystems.
      LIST is a comma-separated list from: aot, profiler, decimal, pinvoke, debug, appdomains, verifier, 
-     reflection_emit, reflection_emit_save, large_code, logging, com, ssa, generics, attach, jit, simd, soft_debug, perfcounters, normalization, desktop_loader, shared_perfcounters, remoting,
+     reflection_emit, reflection_emit_save, large_code, logging, com, ssa, generics, attach, jit, interpreter, simd, soft_debug, perfcounters, normalization, desktop_loader, shared_perfcounters, remoting,
 	 security, lldb, mdb, sgen_remset, sgen_marksweep_par, sgen_marksweep_fixed, sgen_marksweep_fixed_par, sgen_copying.],
 [
 	for feature in `echo "$enable_minimal" | sed -e "s/,/ /g"`; do
@@ -1254,11 +1409,18 @@ if test "x$mono_feature_disable_verifier" = "xyes"; then
 fi
 
 if test "x$mono_feature_disable_jit" = "xyes"; then
-	AC_DEFINE(DISABLE_JIT, 1, [Disable the JIT, only full-aot mode will be supported by the runtime.])
-	AC_MSG_NOTICE([Disabled the JIT engine, only full AOT will be supported])
+	AC_DEFINE(DISABLE_JIT, 1, [Disable the JIT, only full-aot mode or interpreter will be supported by the runtime.])
+	AC_MSG_NOTICE([Disabled the JIT engine, only full AOT or interpreter will be supported])
 fi
 
 AM_CONDITIONAL(DISABLE_JIT, test x$mono_feature_disable_jit = xyes)
+
+if test "x$mono_feature_disable_interpreter" = "xyes"; then
+	AC_DEFINE(DISABLE_INTERPRETER, 1, [Disable the interpreter.])
+	AC_MSG_NOTICE([Disabled the interpreter])
+fi
+
+AM_CONDITIONAL(DISABLE_INTERPRETER, test x$mono_feature_disable_interpreter = xyes)
 
 if test "x$mono_feature_disable_simd" = "xyes"; then
 	AC_DEFINE(DISABLE_SIMD, 1, [Disable SIMD intrinsics related optimizations.])
@@ -1595,7 +1757,6 @@ if test x$host_win32 = xno; then
 	AC_TRY_COMPILE([#include <sched.h>], [
             int mask = 1; 
             sched_setaffinity(0, &mask);
-			return 0;
 	], [
 		# Yes, we have it...
 		AC_MSG_RESULT(yes)
@@ -2179,11 +2340,7 @@ if test x$host_win32 = xno; then
 			child ()
 			{
 				struct sigaction sa;
-			#ifdef __APPLE__
 				stack_t sas;
-			#else
-				struct sigaltstack sas;
-			#endif
 				pthread_t id;
 				pthread_attr_t attr;
 
@@ -2578,7 +2735,7 @@ if test x$host_win32 = xno; then
 		[#include <sys/types.h>
 		 #include <sys/vfs.h>])
 	AC_CHECK_MEMBERS(
-		[struct stat.st_atim, struct stat.st_mtim, struct stat.st_ctim],,, 
+		[struct stat.st_atim, struct stat.st_mtim, struct stat.st_atimespec, struct stat.st_ctim],,, 
 		[#include <sys/types.h>
 		 #include <sys/stat.h>
 		 #include <unistd.h>])
@@ -2620,6 +2777,14 @@ if test x$host_win32 = xno; then
 	 #endif
 	])
 	AC_CHECK_HEADERS([termios.h])
+
+	dnl *********************************
+	dnl *** Checks for random         ***
+	dnl *********************************
+	if test x$host_darwin = xno; then
+		AC_CHECK_HEADERS(sys/random.h)
+		AC_CHECK_FUNCS(getrandom getentropy)
+	fi
 else
 	dnl *********************************
 	dnl *** Checks for Windows compilation ***
@@ -2841,6 +3006,12 @@ AC_MSG_RESULT($try_dev_random)
 case "{$build}" in
     *-openbsd*)
     NAME_DEV_RANDOM="/dev/srandom"
+    ;;
+
+dnl IBM i does not have /dev/random, use unblocking only
+
+    *-*-os400*)
+    NAME_DEV_RANDOM="/dev/urandom"
     ;;
 
 dnl Win32 does not have /dev/random, they have their own method...
@@ -3164,7 +3335,6 @@ case "$host" in
 		#if _MIPS_SIM != _ABIN32
 		#error Not mips n32
 		#endif
-		return 0;
 		],[
 		AC_MSG_RESULT(yes)
 		sizeof_register=8
@@ -3214,6 +3384,9 @@ case "$host" in
 			BTLS_PLATFORM=i386
 			;;
 		  openbsd*|freebsd*|kfreebsd-gnu*)
+			AOT_SUPPORTED="yes"
+			BTLS_SUPPORTED=yes
+			BTLS_PLATFORM=i386
 		        ;;
 		esac
 		;;
@@ -3238,6 +3411,9 @@ case "$host" in
 			boehm_supported=false
 			;;
 		  openbsd*|freebsd*|kfreebsd-gnu*)
+			AOT_SUPPORTED="yes"
+			BTLS_SUPPORTED=yes
+			BTLS_PLATFORM=x86_64
 			;;
 		  mingw*)
 			;;
@@ -3271,7 +3447,8 @@ case "$host" in
 		INTL="intl"
 		;;
 	macppc-*-openbsd* | powerpc*-*-linux* | powerpc-*-openbsd* | \
-        powerpc-*-sysv* | powerpc-*-darwin* | powerpc-*-netbsd* | powerpc-*-freebsd* )
+        powerpc-*-sysv* | powerpc-*-darwin* | powerpc-*-netbsd* | \
+        powerpc-*-freebsd* | powerpc-*-aix* | powerpc-*-os400* )
 		if test "x$ac_cv_sizeof_void_p" = "x8"; then
 			TARGET=POWERPC64;
 			CPPFLAGS="$CPPFLAGS -D__mono_ppc__ -D__mono_ppc64__"
@@ -3282,6 +3459,13 @@ case "$host" in
 		fi
 		arch_target=ppc;
 		case $host_os in
+		  aix*|os400*)
+			dnl on AIX/PASE, shared libraries can be inside archives
+			dnl if they are, we specify them by lib.a(lib.so)
+			dnl we may hardcode 64-bit names at times, but we don't do 32-bit AIX, so
+			LIBC="libc.a(shr_64.o)"
+			INTL="libintl.a(libintl.so.9)"
+			;;
 		  linux*|darwin*)
 			;;
 		esac
@@ -3345,6 +3529,7 @@ HOST=$TARGET
 if test "x$host" != "x$target"; then
    AC_DEFINE(MONO_CROSS_COMPILE,1,[The runtime is compiled for cross-compiling mode])
    enable_mcs_build=no
+   enable_support_build=no
    BTLS_SUPPORTED=no
    case "$target" in
    arm*-darwin*)
@@ -3624,7 +3809,6 @@ if test "x$target_mach" = "xyes"; then
        #if TARGET_IPHONE_SIMULATOR == 1 || TARGET_OS_IPHONE == 1
        #error fail this for ios
        #endif
-       return 0;
        ], [
 	   	  AC_DEFINE(TARGET_OSX,1,[The JIT/AOT targets OSX])
           CPPFLAGS_FOR_LIBGC="$CPPFLAGS_FOR_LIBGC -DTARGET_OSX"
@@ -3668,14 +3852,6 @@ fi
 if test "x$have_deprecated" = "xyes"; then
    AC_DEFINE(HAVE_DEPRECATED, 1, [Support for the deprecated attribute])
 fi
-
-AC_ARG_ENABLE(interpreter, [  --enable-interpreter       Enable Interpreter], enable_interpreter=$enableval, enable_interpreter=no)
-
-if test "x$enable_interpreter" = "xyes"; then
-	AC_DEFINE(ENABLE_INTERPRETER, 1, [Enable Interpreter])
-fi
-
-AM_CONDITIONAL(ENABLE_INTERPRETER, [test x$enable_interpreter = xyes])
 
 dnl 
 dnl Simple Generational checks (sgen)
@@ -3866,7 +4042,19 @@ AC_SEARCH_LIBS(nanosleep, rt)
 
 AC_SEARCH_LIBS(dlopen, dl)
 old_ldflags="${LDFLAGS}"
-LDFLAGS="${LDFLAGS} -Wl,-export-dynamic"
+# GNU specific option, this confuses IBM ld, but do offer alternatives when possible
+if test $lt_cv_prog_gnu_ld = yes; then
+	LDFLAGS="${LDFLAGS} -Wl,-export-dynamic"
+else
+	case $host in
+	*-*-aix*|*-*-os400*)
+		;;
+	*)
+		dnl Try to use export-dynamic anyways
+		LDFLAGS="${LDFLAGS} -Wl,-export-dynamic"
+		;;
+	esac
+fi
 AC_TRY_LINK(, [int i;], found_export_dynamic=yes, found_export_dynamic=no)
 if test $found_export_dynamic = no; then
 	LDFLAGS="${old_ldflags}"
@@ -3945,8 +4133,21 @@ case "$host" in
 esac
 
 case $with_libgdiplus in
-    no|installed)
+    no)
     libgdiplus_loc=
+    ;;
+
+    installed)
+    libgdiplus_loc=
+    if test x$cross_compiling = xno; then
+        if test x$host_darwin = xyes; then
+	    a=/Library/Frameworks/Mono.framework/Versions/Current/lib/$libgdiplus_install_loc
+	    if test -x $a; then
+	      libgdiplus_install_loc=$a
+	      libgdiplus_loc=$a
+	    fi
+	fi
+    fi
     ;;
 
     yes|sibling)
@@ -3962,8 +4163,8 @@ case $with_libgdiplus in
     libgdiplus_loc=`pwd`/$with_libgdiplus
     ;;
 esac
-AC_SUBST([libgdiplus_loc])
-AC_SUBST([libgdiplus_install_loc])
+AC_SUBST(libgdiplus_loc)
+AC_SUBST(libgdiplus_install_loc)
 
 AC_ARG_ENABLE(icall-symbol-map,[  --enable-icall-symbol-map Generate tables which map icall functions to their C symbols], icall_symbol_map=$enableval, icall_symbol_map=no)
 if test "x$icall_symbol_map" = "xyes"; then
@@ -3979,6 +4180,8 @@ AC_ARG_ENABLE(icall-tables,[  --disable-icall-tables Disable the runtime lookup 
 if test "x$icall_tables" = "xno"; then
    AC_DEFINE(DISABLE_ICALL_TABLES, 1, [Icall tables disabled])
 fi
+
+AM_CONDITIONAL(DISABLE_ICALL_TABLES, test x$icall_tables = xno)
 
 if test "x$with_tls" = "x__thread"; then
 	AC_DEFINE(HAVE_KW_THREAD, 1, [Have __thread keyword])
@@ -4030,7 +4233,6 @@ if test ${TARGET} = ARM; then
 			#ifndef __ARM_PCS_VFP
 			#error "Float ABI is not 'hard'"
 			#endif
-			return 0;
 		], [
 			fpu=VFP_HARD
 		], [
@@ -4044,7 +4246,6 @@ if test ${TARGET} = ARM; then
 			#ifdef __SOFTFP__
 			#error "Float ABI is not 'softfp'"
 			#endif
-			return 0;
 		], [
 			fpu=VFP
 		], [
@@ -4069,7 +4270,6 @@ if test ${TARGET} = ARM; then
 		#if !defined(__ARM_ARCH_5T__) && !defined(__ARM_ARCH_5TE__) && !defined(__ARM_ARCH_5TEJ__)
 		#error Not on ARM v5.
 		#endif
-		return 0;
 	], [
 		arm_v5=yes
 
@@ -4080,7 +4280,6 @@ if test ${TARGET} = ARM; then
 		#if !defined(__ARM_ARCH_6J__) && !defined(__ARM_ARCH_6ZK__) && !defined(__ARM_ARCH_6K__) && !defined(__ARM_ARCH_6T2__) && !defined(__ARM_ARCH_6M__)
 		#error Not on ARM v6.
 		#endif
-		return 0;
 	], [
 		arm_v5=yes
 		arm_v6=yes
@@ -4092,7 +4291,6 @@ if test ${TARGET} = ARM; then
 		#if !defined(__ARM_ARCH_7A__) && !defined(__ARM_ARCH_7R__) && !defined(__ARM_ARCH_7EM__) && !defined(__ARM_ARCH_7M__) && !defined(__ARM_ARCH_7S__)
 		#error Not on ARM v7.
 		#endif
-		return 0;
 	], [
 		arm_v5=yes
 		arm_v6=yes
@@ -4245,7 +4443,7 @@ fi
 
 AM_CONDITIONAL([ENABLE_COOP], [test x$with_cooperative_gc != xno])
 
-AC_ARG_ENABLE(checked_build, [  --enable-checked-build=LIST      To enable checked build (expensive asserts), configure with a comma-separated LIST of checked build modules and then include that same list in the environment variable MONO_CHECK_MODE at runtime. Recognized checked build modules: all, gc, metadata, thread],[
+AC_ARG_ENABLE(checked_build, [  --enable-checked-build=LIST      To enable checked build (expensive asserts), configure with a comma-separated LIST of checked build modules and then include that same list in the environment variable MONO_CHECK_MODE at runtime. Recognized checked build modules: all, gc, metadata, thread, private_types],[
 
 	if test x$enable_checked_build != x ; then
 		AC_DEFINE(ENABLE_CHECKED_BUILD,1,[Enable checked build])
@@ -4258,6 +4456,7 @@ AC_ARG_ENABLE(checked_build, [  --enable-checked-build=LIST      To enable check
 		eval "mono_checked_build_test_enable_gc='yes'"
 		eval "mono_checked_build_test_enable_metadata='yes'"
 		eval "mono_checked_build_test_enable_thread='yes'"
+		eval "mono_checked_build_test_enable_private_types='yes'"
 	fi
 
 	if test "x$mono_checked_build_test_enable_gc" = "xyes"; then
@@ -4272,6 +4471,9 @@ AC_ARG_ENABLE(checked_build, [  --enable-checked-build=LIST      To enable check
 		AC_DEFINE(ENABLE_CHECKED_BUILD_THREAD, 1, [Enable thread checked build])
 	fi
 
+	if test "x$mono_checked_build_test_enable_private_types" = "xyes"; then
+		AC_DEFINE(ENABLE_CHECKED_BUILD_PRIVATE_TYPES, 1, [Enable private types checked build])
+	fi
 ], [])
 
 AC_CHECK_HEADER([malloc.h], 
@@ -4345,22 +4547,22 @@ if test "x$enable_btls" = "xyes"; then
 		btls_arch=aarch64
 		;;
 	android-armv5)
-		BTLS_CMAKE_ARGS="-DANDROID_ABI=\"armeabi\" -DANDROID_NATIVE_API_LEVEL=12"
+		BTLS_CMAKE_ARGS="-DANDROID_ABI=\"armeabi\" -DANDROID_NATIVE_API_LEVEL=14"
 		;;
 	android-armv6)
-		BTLS_CMAKE_ARGS="-DANDROID_ABI=\"armeabi\" -DANDROID_NATIVE_API_LEVEL=12"
+		BTLS_CMAKE_ARGS="-DANDROID_ABI=\"armeabi\" -DANDROID_NATIVE_API_LEVEL=14"
 		;;
 	android-armv7)
-		BTLS_CMAKE_ARGS="-DANDROID_ABI=\"armeabi-v7a\" -DANDROID_NATIVE_API_LEVEL=12"
+		BTLS_CMAKE_ARGS="-DANDROID_ABI=\"armeabi-v7a\" -DANDROID_NATIVE_API_LEVEL=14"
 		;;
 	android-v8a)
-		BTLS_CMAKE_ARGS="-DANDROID_ABI=\"arm64-v8a\" -DANDROID_NATIVE_API_LEVEL=12"
+		BTLS_CMAKE_ARGS="-DANDROID_ABI=\"arm64-v8a\" -DANDROID_NATIVE_API_LEVEL=21"
 		;;
 	android-x86)
-		BTLS_CMAKE_ARGS="-DANDROID_ABI=\"x86\" -DANDROID_NATIVE_API_LEVEL=12"
+		BTLS_CMAKE_ARGS="-DANDROID_ABI=\"x86\" -DANDROID_NATIVE_API_LEVEL=14"
 		;;
 	android-x64)
-		BTLS_CMAKE_ARGS="-DANDROID_ABI=\"x86_64\" -DANDROID_NATIVE_API_LEVEL=12"
+		BTLS_CMAKE_ARGS="-DANDROID_ABI=\"x86_64\" -DANDROID_NATIVE_API_LEVEL=21"
 		;;
 	*)
 		AC_MSG_ERROR(Invalid BTLS platform)
@@ -4402,6 +4604,7 @@ AC_SUBST(docs_dir)
 
 ## Maybe should also disable if mcsdir is invalid.  Let's punt the issue for now.
 AM_CONDITIONAL(BUILD_MCS, [test x$cross_compiling = xno && test x$enable_mcs_build != xno])
+AM_CONDITIONAL(BUILD_SUPPORT, [test x$enable_support_build != xno])
 
 libmono_ldflags="$libmono_ldflags $LIBS"
 
@@ -4449,7 +4652,7 @@ AC_SUBST(mono_build_root)
 mono_runtime=mono/mini/mono
 AC_SUBST(mono_runtime)
 
-CSC_LOCATION=`cd $srcdir && pwd`/external/roslyn-binaries/Microsoft.Net.Compilers/Microsoft.Net.Compilers.2.3.2/tools/csc.exe
+CSC_LOCATION=`cd $srcdir && pwd`/external/roslyn-binaries/Microsoft.Net.Compilers/Microsoft.Net.Compilers.2.6.0/tools/csc.exe
 
 if test $csc_compiler = mcs; then
   CSC=$mcs_topdir/class/lib/build/mcs.exe
@@ -4645,6 +4848,7 @@ scripts/mono-find-requires
 mono/Makefile
 mono/btls/Makefile
 mono/utils/Makefile
+mono/utils/jemalloc/Makefile
 mono/metadata/Makefile
 mono/dis/Makefile
 mono/cil/Makefile
@@ -4827,6 +5031,11 @@ fi
     if test "x$AOT_BUILD_FLAGS" != "x" ; then
       echo "AOT_RUN_FLAGS=$AOT_RUN_FLAGS" >> $srcdir/$mcsdir/build/config.make
       echo "AOT_BUILD_FLAGS=$AOT_BUILD_FLAGS" >> $srcdir/$mcsdir/build/config.make
+      echo "AOT_BUILD_ATTRS=$AOT_BUILD_ATTRS" >> $srcdir/$mcsdir/build/config.make
+    fi
+
+    if test "x$AOT_MODE" != "x" ; then
+      echo "AOT_MODE=$AOT_MODE" >> $srcdir/$mcsdir/build/config.make
     fi
 
     if test "x$enable_btls" = "xyes"; then
@@ -4862,7 +5071,7 @@ echo "
 	BigArrays:     $enable_big_arrays
 	DTrace:        $enable_dtrace
 	LLVM Back End: $enable_llvm (dynamically loaded: $enable_loadedllvm)
-	Interpreter:   $enable_interpreter
+	Spectre:       $spectre_mitigation_status
 
    Libraries:
 	.NET 4.x:        $with_profile4_x
@@ -4874,11 +5083,13 @@ echo "
 	Windows AOT:     $with_winaot
 	Orbis:           $with_orbis
 	Unreal:          $with_unreal
+	WebAssembly:     $with_wasm
 	Test profiles:   AOT Full ($with_testing_aot_full), AOT Hybrid ($with_testing_aot_hybrid)
 	JNI support:     $jdk_headers_found
 	libgdiplus:      $libgdiplus_msg
 	zlib:            $zlib_msg
 	BTLS:            $enable_btls$btls_platform_string
+	jemalloc:        $with_jemalloc (always use: $with_jemalloc_always)
 	$disabled
 "
 if test x$with_static_mono = xno -a "x$host_win32" != "xyes"; then

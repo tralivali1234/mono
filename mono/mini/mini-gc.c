@@ -12,6 +12,7 @@
 
 #include "config.h"
 #include "mini-gc.h"
+#include "mini-runtime.h"
 #include <mono/metadata/gc-internals.h>
 
 static gboolean
@@ -94,8 +95,6 @@ typedef struct {
 	guint8 *reg_ref_bitmap;
 	guint8 *reg_pin_bitmap;
 } MonoCompileGC;
-
-#define ALIGN_TO(val,align) ((((mgreg_t)val) + ((align) - 1)) & ~((align) - 1))
 
 #undef DEBUG
 
@@ -635,7 +634,7 @@ thread_suspend_func (gpointer user_data, void *sigctx, MonoContext *ctx)
 #ifdef TARGET_WIN32
 		return;
 #else
-		res = mono_thread_state_init_from_handle (&tls->unwind_state, tls->info);
+		res = mono_thread_state_init_from_handle (&tls->unwind_state, tls->info, NULL);
 #endif
 	} else {
 		tls->unwind_state.unwind_data [MONO_UNWIND_DATA_LMF] = mono_get_lmf ();

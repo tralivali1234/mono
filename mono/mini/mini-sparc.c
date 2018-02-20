@@ -130,8 +130,6 @@
 #endif
 #endif
 
-#define ALIGN_TO(val,align) (((val) + ((align) - 1)) & ~((align) - 1))
-
 #define SIGNAL_STACK_SIZE (64 * 1024)
 
 #define STACK_BIAS MONO_SPARC_STACK_BIAS
@@ -1569,7 +1567,7 @@ else { \
 static guint32*
 emit_call (MonoCompile *cfg, guint32 *code, guint32 patch_type, gconstpointer data)
 {
-	MonoError error;
+	ERROR_DECL (error);
 	gpointer target;
 
 	/* FIXME: This only works if the target method is already compiled */
@@ -1579,8 +1577,8 @@ emit_call (MonoCompile *cfg, guint32 *code, guint32 patch_type, gconstpointer da
 		patch_info.type = patch_type;
 		patch_info.data.target = data;
 
-		target = mono_resolve_patch_target (cfg->method, cfg->domain, NULL, &patch_info, FALSE, &error);
-		mono_error_raise_exception (&error); /* FIXME: don't raise here */
+		target = mono_resolve_patch_target (cfg->method, cfg->domain, NULL, &patch_info, FALSE, error);
+		mono_error_raise_exception_deprecated (error); /* FIXME: don't raise here */
 
 		/* FIXME: Add optimizations if the target is close enough */
 		sparc_set (code, target, sparc_o7);
@@ -3136,7 +3134,8 @@ mono_arch_output_basic_block (MonoCompile *cfg, MonoBasicBlock *bb)
 			/* This is a jump inside the method, so call_simple works even on V9 */
 			sparc_call_simple (code, 0);
 			sparc_nop (code);
-			mono_cfg_add_try_hole (cfg, ins->inst_eh_block, code, bb);
+			for (GList *tmp = ins->inst_eh_blocks; tmp != bb->clause_holes; tmp = tmp->prev)
+				mono_cfg_add_try_hole (cfg, (MonoExceptionClause *)tmp->data, code, bb);
 			break;
 		case OP_LABEL:
 			ins->inst_c0 = (guint8*)code - cfg->native_code;
@@ -3776,7 +3775,7 @@ enum {
 };
 
 void*
-mono_arch_instrument_epilog_full (MonoCompile *cfg, void *func, void *p, gboolean enable_arguments, gboolean preserve_argument_registers)
+mono_arch_instrument_epilog (MonoCompile *cfg, void *func, void *p, gboolean enable_arguments)
 {
 	guint32 *code = (guint32*)p;
 	int save_mode = SAVE_NONE;
